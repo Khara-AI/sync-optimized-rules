@@ -2,7 +2,7 @@
 
 `sor` keeps the Claude Code rules of many repositories in sync. You gather repositories into groups, choose which scopes each group shares (anonymity, commit hygiene, language conventions…), and `sor` installs them in every member, locally and without overwriting anything you wrote by hand.
 
-> Early stage: groups and members work; scopes, sync and the interactive setup are being built. See [docs/design.md](docs/design.md).
+> Early stage: the format of the configuration may still change. See [docs/design.md](docs/design.md).
 
 ## Install
 
@@ -40,6 +40,10 @@ curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/down
 On Windows, `$env:SOR_UNINSTALL = 1` before the install command. For the plugin, `/plugin uninstall sor@sync-optimized-rules`. Your configuration in `~/.config/sync-optimized-rules` is left in place.
 
 ## Usage
+
+Run `sor` in a terminal: menus guide you through creating a group, picking its repositories, choosing the rules to share and installing them (arrows to move, space to tick, enter to confirm, esc to go back). Conflicts are settled there too, with the difference shown.
+
+Every step also exists as a command, for scripts:
 
 ```sh
 sor group add web --description "web projects"

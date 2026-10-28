@@ -3,7 +3,9 @@
 //! Every command that reports something accepts `--json`; the human output
 //! and the JSON are two renderings of the same values (see `render`).
 
+mod interactive;
 mod render;
+mod tui;
 
 use std::ffi::OsString;
 use std::fs;
@@ -22,6 +24,8 @@ pub const DRIFT: u8 = 2;
 
 const HELP: &str = "\
 sor - keep Claude Code rules in sync across repositories
+
+  sor, sor setup                              interactive setup, with keyboard menus
 
 Groups:
   sor group list
@@ -101,7 +105,10 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
     let owned = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
     let json = f.json;
     match w.as_slice() {
+        [] if tui::available() => return interactive::run(&mut config),
         [] => println!("{HELP}"),
+        ["setup"] if tui::available() => return interactive::run(&mut config),
+        ["setup"] => return Err(Error::invalid("sor setup needs a terminal")),
         ["group", "list"] => render::groups(&config, json),
         ["group", "add", name] => {
             config.add_group(name, f.description.as_deref().unwrap_or(""))?;

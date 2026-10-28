@@ -21,6 +21,9 @@ lexopt = "0.3"
 # std has no JSON support.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
+# The interactive setup: raw keys and cursor moves on Linux, macOS and Windows
+# consoles. Only key events are enabled (no async stream, no serde).
+crossterm = { version = "0.29", default-features = false, features = ["events", "windows"] }
 
 [lints.rust]
 unsafe_code = "forbid"

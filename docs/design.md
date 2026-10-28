@@ -76,11 +76,15 @@ All of them are clients of the same library:
 src/main.rs          entry point
 src/cli.rs           argument parsing and dispatch
 src/cli/render.rs    human and JSON output
+src/cli/tui.rs       terminal: raw keys, widgets drawn in place
+src/cli/tui/widget/  lists, text fields, yes/no (pure state, tested without a terminal)
+src/cli/interactive/ menus: groups, members, scopes, sync and conflicts
 src/lib.rs           library root
 src/config.rs        groups and members
 src/config/sharing.rs  shared scopes, exclusions, imports, plan per repository
 src/store.rs         scopes on disk
-src/capture.rs       capture and tidy
+src/capture.rs       capture, and what a repository could capture
+src/capture/tidy.rs  moving originals aside
 src/engine.rs        status and sync
 src/engine/resolve.rs  keep, take, promote
 src/repo.rs          per-repository state and exclude block
@@ -90,4 +94,4 @@ src/discover.rs      repository discovery
 src/paths.rs         config home
 ```
 
-To come: `cli/interactive` (keyboard menus), the plugin's skill and `SessionStart` hook.
+To come: the plugin's skill and `SessionStart` hook.

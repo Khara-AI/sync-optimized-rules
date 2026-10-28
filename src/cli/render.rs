@@ -166,11 +166,12 @@ pub fn reports(reports: &[Report], json: bool) {
         println!("No repository in any group yet.");
     }
     for r in reports {
-        report(r);
+        report(r, true);
     }
 }
 
-fn report(r: &Report) {
+/// `hint`: end with the command that settles conflicts.
+pub fn report(r: &Report, hint: bool) {
     let scopes = if r.scopes.is_empty() {
         "no scope".to_owned()
     } else {
@@ -211,7 +212,7 @@ fn report(r: &Report) {
     }
     if r.clean {
         println!("  up to date ({ok} files)");
-    } else if r.pending() {
+    } else if hint && r.pending() {
         println!(
             "  resolve with: sor resolve {} <file> keep|take|promote",
             r.repo.display()
