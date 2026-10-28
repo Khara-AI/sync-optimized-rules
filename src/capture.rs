@@ -16,12 +16,14 @@ use crate::store::{Area, Meta};
 mod gather;
 mod hooks;
 mod merge;
+mod select;
 mod tidy;
 
 use hooks::hook_entries;
+use select::owned_elsewhere;
 
-pub use gather::{Found, gather};
-pub use merge::{claude, merge};
+pub use gather::{Found, gather, scope_names};
+pub use merge::{claude, merge, merge_with};
 pub use tidy::{Tidy, tidy};
 
 const PROJECT_SETTINGS: &str = ".claude/settings.json";
@@ -44,33 +46,46 @@ pub struct Options<'a> {
     pub move_originals: bool,
 }
 
-/// Copy `paths` (under `repo/.claude/`) into the scope and share it.
+/// Copy `paths` (under `.claude/` of `repos`) into the scope and share it.
+/// From several repositories, versions that differ keep their repository's
+/// name until merged; a path names all its versions, a version name just one.
 pub fn capture(
     config: &mut Config,
     group: &str,
     scope: &str,
-    repo: &Path,
+    repos: &[PathBuf],
     paths: &[PathBuf],
     opts: &Options,
 ) -> Result<Capture> {
-    let repo = fs::canonicalize(repo).at(repo)?;
-    let found: Vec<Found> = select(config, &repo, paths)?
-        .into_iter()
-        .map(|path| Found {
-            name: path.clone(),
-            path,
-            repos: vec![repo.clone()],
-            hooked: false,
-        })
-        .collect();
-    let permissions = if opts.permissions {
-        std::slice::from_ref(&repo)
-    } else {
-        &[]
+    let repos = repos
+        .iter()
+        .map(|r| fs::canonicalize(r).at(r))
+        .collect::<Result<Vec<_>>>()?;
+    let found: Vec<Found> = match repos.as_slice() {
+        [] => return Err(Error::invalid("capture from which repository?")),
+        [repo] => select::files(config, repo, paths)?
+            .into_iter()
+            .map(|path| Found {
+                name: path.clone(),
+                path,
+                repos: vec![repo.clone()],
+                hooked: false,
+            })
+            .collect(),
+        _ if opts.move_originals => {
+            return Err(Error::invalid(
+                "--move takes a single --from: run sor tidy in each repository instead",
+            ));
+        }
+        _ => {
+            let all = gather(config, &repos)?;
+            scope_names(&all, &select::versions(&all, paths)?)
+        }
     };
+    let permissions: &[PathBuf] = if opts.permissions { &repos } else { &[] };
     let mut report = capture_found(config, group, scope, &found, opts.description, permissions)?;
-    if opts.move_originals {
-        report.tidy = Some(tidy(config, &repo, paths, true)?);
+    if let ([repo], true) = (repos.as_slice(), opts.move_originals) {
+        report.tidy = Some(tidy(config, repo, paths, true)?);
     }
     Ok(report)
 }
@@ -197,64 +212,6 @@ pub fn candidates(config: &Config, repo: &Path) -> Result<Vec<Candidate>> {
 pub fn permission_counts(repo: &Path) -> Result<[usize; 3]> {
     let project = fsutil::read_json(&repo.join(PROJECT_SETTINGS))?.unwrap_or(Value::Null);
     Ok(PERMISSIONS.map(|k| project["permissions"][k].as_array().map_or(0, Vec::len)))
-}
-
-/// Files named by `paths`, relative to `repo/.claude/`. Folders expand to
-/// their files; sor's own files, settings and CLAUDE.md are never taken.
-fn select(config: &Config, repo: &Path, paths: &[PathBuf]) -> Result<Vec<String>> {
-    let claude = repo.join(".claude");
-    let mut out: Vec<String> = Vec::new();
-    for p in paths {
-        let abs = if p.is_absolute() {
-            p.clone()
-        } else {
-            repo.join(p)
-        };
-        let abs = fs::canonicalize(&abs).at(&abs)?;
-        let rel = abs.strip_prefix(&claude).map(fsutil::slash).map_err(|_| {
-            Error::invalid(format!(
-                "{} is not under {}",
-                abs.display(),
-                claude.display()
-            ))
-        })?;
-        let found: Vec<String> = if abs.is_dir() {
-            fsutil::files_under(&abs)
-                .into_iter()
-                .map(|f| {
-                    if rel.is_empty() {
-                        f
-                    } else {
-                        format!("{rel}/{f}")
-                    }
-                })
-                .filter(|f| !owned_elsewhere(config, f))
-                .collect()
-        } else if owned_elsewhere(config, &rel) {
-            return Err(Error::invalid(format!(
-                ".claude/{rel} cannot be captured: sor manages it, or it holds settings or CLAUDE.md"
-            )));
-        } else {
-            vec![rel]
-        };
-        for f in found {
-            if !out.contains(&f) {
-                out.push(f);
-            }
-        }
-    }
-    if out.is_empty() {
-        return Err(Error::invalid("nothing to capture"));
-    }
-    Ok(out)
-}
-
-fn owned_elsewhere(config: &Config, rel: &str) -> bool {
-    matches!(rel, "settings.json" | "settings.local.json" | "CLAUDE.md")
-        || rel.starts_with("sor/")
-        || config.groups.keys().any(|g| {
-            rel.starts_with(&format!("rules/{g}/")) || rel.starts_with(&format!("agents/{g}/"))
-        })
 }
 
 #[cfg(test)]

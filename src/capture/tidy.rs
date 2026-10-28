@@ -26,7 +26,7 @@ pub struct Tidy {
 /// entries of `.claude/settings.json` that ran them (after a backup).
 pub fn tidy(config: &Config, repo: &Path, paths: &[PathBuf], apply: bool) -> Result<Tidy> {
     let repo = fs::canonicalize(repo).at(repo)?;
-    let files = select(config, &repo, paths)?;
+    let files = select::files(config, &repo, paths)?;
     let mut touched: Vec<String> = files.iter().map(|f| format!(".claude/{f}")).collect();
     let settings_file = repo.join(PROJECT_SETTINGS);
     let mut project = fsutil::read_json(&settings_file)?.unwrap_or(Value::Null);

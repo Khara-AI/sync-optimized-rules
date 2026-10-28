@@ -70,6 +70,28 @@ pub fn merge(
     replace(&store, group, scope, path, names, &merged)
 }
 
+/// Replace the versions `names` of `path` with `merged`, written elsewhere.
+pub fn merge_with(
+    config: &Config,
+    group: &str,
+    scope: &str,
+    path: &str,
+    names: &[String],
+    merged: &str,
+) -> Result<()> {
+    let store = config.store();
+    for name in names {
+        let file = scope_file(&store, group, scope, name);
+        if !file.is_file() {
+            return Err(Error::invalid(format!("{group}/{scope} has no {name}")));
+        }
+    }
+    if merged.trim().is_empty() {
+        return Err(Error::invalid("the merged file is empty"));
+    }
+    replace(&store, group, scope, path, names, merged)
+}
+
 /// Write the merged file, archive the versions and point their hooks at it.
 fn replace(
     store: &Store,

@@ -89,6 +89,7 @@ pub fn scopes(config: &Config, only: Option<&str>, json: bool) -> Result<()> {
                 "scope": scope,
                 "description": meta.description,
                 "files": store.files(name, &scope).len(),
+                "dir": store.dir(name, &scope),
                 "shared": g.scopes.contains(&scope),
             }));
         }

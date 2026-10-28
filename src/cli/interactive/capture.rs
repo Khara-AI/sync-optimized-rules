@@ -72,7 +72,7 @@ impl Session<'_> {
 
         let mut versions: Vec<Versions> = Vec::new();
         for (n, b) in batches.iter().enumerate() {
-            let files = scope_names(&found, &b.files);
+            let files = capture::scope_names(&found, &b.files);
             let from: &[PathBuf] = if perms_to == Some(n) { &repos } else { &[] };
             let report = capture::capture_found(
                 self.config,
@@ -264,20 +264,4 @@ fn kind(f: &Found) -> &'static str {
         Area::Files if f.hooked => "file · its hook follows",
         Area::Files => "file",
     }
-}
-
-/// The picked files under their scope names: a version picked without the
-/// others of its path takes back the plain name.
-fn scope_names(found: &[Found], picked: &[usize]) -> Vec<Found> {
-    picked
-        .iter()
-        .map(|&i| {
-            let mut f = found[i].clone();
-            let alone = picked.iter().filter(|&&j| found[j].path == f.path).count() == 1;
-            if alone {
-                f.name = f.path.clone();
-            }
-            f
-        })
-        .collect()
 }

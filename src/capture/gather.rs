@@ -74,6 +74,21 @@ pub fn version_name(path: &str, repo: &Path) -> String {
     }
 }
 
+/// The picked files under their scope names: a version picked without the
+/// others of its path takes back the plain name.
+pub fn scope_names(found: &[Found], picked: &[usize]) -> Vec<Found> {
+    picked
+        .iter()
+        .map(|&i| {
+            let mut f = found[i].clone();
+            if picked.iter().filter(|&&j| found[j].path == f.path).count() == 1 {
+                f.name = f.path.clone();
+            }
+            f
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

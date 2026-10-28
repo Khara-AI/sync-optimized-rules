@@ -5,6 +5,7 @@
 
 mod interactive;
 mod render;
+mod scope;
 mod tui;
 
 use std::ffi::OsString;
@@ -13,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use lexopt::prelude::*;
 use serde_json::json;
-use sync_optimized_rules::capture::{self, Options};
+use sync_optimized_rules::capture;
 use sync_optimized_rules::config::Config;
 use sync_optimized_rules::engine::{self, Resolution};
 use sync_optimized_rules::error::{Error, IoContext, Result};
@@ -40,15 +41,21 @@ Groups:
   sor repos <group>                           repositories, workspaces expanded
 
 Scopes:
+  sor find <folder> [--depth <n>]             git repositories inside, and their groups
+  sor scan <repo>...                          what their .claude/ folders could share
   sor scope list [group]
-  sor scope capture <group> <scope> <path>... [--from <repo>] [--description <text>]
+  sor scope capture <group> <scope> <path>... [--from <repo>]... [--description <text>]
                     [--permissions] [--move]
       copy files of <repo>/.claude/ into the scope (hooks that run them follow;
-      --permissions also takes allow/deny/ask; --move then tidies the originals)
+      --permissions also takes allow/deny/ask; --move then tidies the originals).
+      With several --from, versions that differ keep their repository's name.
+  sor scope merge <group> <scope> <path> <version>... [--file <merged>]
+      replace the versions with one file: <merged>, else merged by claude
 
 Repositories (all repositories of all groups when <repo> is omitted):
   sor status [repo]                           exit code 2 on drift or conflict
   sor sync [repo] [--dry-run]
+  sor diff <repo> <file>                      the group's version of a conflict against yours
   sor resolve <repo> <file> keep|take|promote
   sor tidy <repo> <path>... [--dry-run]       move originals to .claude/sor/backup/
 
@@ -65,7 +72,8 @@ struct Flags {
     workspace: bool,
     depth: Option<usize>,
     description: Option<String>,
-    from: Option<PathBuf>,
+    from: Vec<PathBuf>,
+    file: Option<PathBuf>,
     dry_run: bool,
     permissions: bool,
     move_originals: bool,
@@ -86,7 +94,8 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
             Long("description") => {
                 f.description = Some(parser.value().map_err(usage)?.string().map_err(usage)?)
             }
-            Long("from") => f.from = Some(parser.value().map_err(usage)?.into()),
+            Long("from") => f.from.push(parser.value().map_err(usage)?.into()),
+            Long("file") => f.file = Some(parser.value().map_err(usage)?.into()),
             Short('h') | Long("help") => {
                 println!("{HELP}");
                 return Ok(0);
@@ -104,6 +113,9 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
     let w: Vec<&str> = words.iter().map(String::as_str).collect();
     let owned = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
     let json = f.json;
+    if scope::run(&mut config, &w, &f)? {
+        return Ok(0);
+    }
     match w.as_slice() {
         [] if tui::available() => return interactive::run(&mut config),
         [] => println!("{HELP}"),
@@ -212,20 +224,6 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
             );
         }
         ["repos", group] => render::paths(&config.repos(group)?, json),
-        ["scope", "list"] => render::scopes(&config, None, json)?,
-        ["scope", "list", group] => render::scopes(&config, Some(group), json)?,
-        ["scope", "capture", group, scope, paths @ ..] if !paths.is_empty() => {
-            let from = f.from.clone().unwrap_or_else(|| PathBuf::from("."));
-            let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-            let opts = Options {
-                description: f.description.as_deref(),
-                permissions: f.permissions,
-                move_originals: f.move_originals,
-            };
-            let report = capture::capture(&mut config, group, scope, &from, &paths, &opts)?;
-            config.save()?;
-            render::capture(&report, json);
-        }
         ["status"] | ["status", _] | ["sync"] | ["sync", _] => {
             let apply = w[0] == "sync" && !f.dry_run;
             let repos = match w.get(1) {
