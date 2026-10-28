@@ -1,18 +1,19 @@
 //! `sor` without arguments, in a terminal: groups, repositories, scopes and
 //! sync driven from menus instead of commands.
 
+mod capture;
 mod members;
+mod paths;
 mod scopes;
 mod sync;
 
-use std::env;
 use std::path::{Path, PathBuf};
 
 use sync_optimized_rules::config::{self, Config};
 use sync_optimized_rules::error::Result;
-use sync_optimized_rules::fsutil;
 
 use super::tui::{self, Item, List, Tone, Ui};
+use paths::short;
 
 pub struct Session<'a> {
     ui: Ui,
@@ -310,32 +311,8 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-fn home() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-}
-
 /// A repository's folder name, the way people call it.
 fn name(path: &Path) -> String {
     path.file_name()
         .map_or_else(|| short(path), |n| n.to_string_lossy().into_owned())
-}
-
-/// `~/…` for paths under the home folder.
-fn short(path: &Path) -> String {
-    match home().and_then(|h| path.strip_prefix(h).ok().map(fsutil::slash)) {
-        Some(rest) if rest.is_empty() => "~".into(),
-        Some(rest) => format!("~/{rest}"),
-        None => path.display().to_string(),
-    }
-}
-
-fn expand(text: &str) -> PathBuf {
-    match (text.strip_prefix('~'), home()) {
-        (Some(rest), Some(h)) if rest.is_empty() || rest.starts_with('/') => {
-            h.join(rest.trim_start_matches('/'))
-        }
-        _ => PathBuf::from(text),
-    }
 }

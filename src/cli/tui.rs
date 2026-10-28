@@ -200,6 +200,18 @@ impl Ui {
         Ok(self.ask(&mut input)?.then(|| input.text()))
     }
 
+    /// A text field where tab completes folder names.
+    pub fn folder(
+        &self,
+        title: &str,
+        default: &str,
+        check: impl Fn(&str) -> std::result::Result<(), String>,
+        complete: impl Fn(&str) -> (String, Vec<String>),
+    ) -> Result<Option<String>> {
+        let mut input = Input::new(title, default, check).complete(complete);
+        Ok(self.ask(&mut input)?.then(|| input.text()))
+    }
+
     pub fn confirm(&self, title: &str, default: bool) -> Result<Option<bool>> {
         let mut c = Confirm::new(title, default);
         Ok(self.ask(&mut c)?.then_some(c.value))
@@ -226,7 +238,7 @@ fn map(k: KeyEvent) -> Option<Key> {
         KeyCode::Enter => Key::Enter,
         KeyCode::Esc => Key::Esc,
         KeyCode::Backspace => Key::Backspace,
-        KeyCode::Tab => Key::Down,
+        KeyCode::Tab => Key::Tab,
         KeyCode::BackTab => Key::Up,
         _ => return None,
     })

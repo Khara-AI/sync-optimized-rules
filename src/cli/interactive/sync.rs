@@ -11,6 +11,13 @@ use crate::cli::render;
 use crate::cli::tui::{Item, Tone};
 
 #[derive(Clone, Copy)]
+enum Apply {
+    Yes,
+    Details,
+    No,
+}
+
+#[derive(Clone, Copy)]
 enum Settle {
     Keep,
     Take,
@@ -51,7 +58,7 @@ impl Session<'_> {
         let reports = self.preview()?;
         let mut shown = false;
         for r in reports.iter().filter(|r| !r.clean) {
-            render::report(r, false);
+            self.outline(r);
             shown = true;
         }
         if !shown {
@@ -75,7 +82,7 @@ impl Session<'_> {
             ));
             return Ok(());
         }
-        changing.iter().for_each(|r| render::report(r, false));
+        changing.iter().for_each(|r| self.outline(r));
 
         let apply: Vec<&Path> = changing
             .iter()
@@ -87,8 +94,20 @@ impl Session<'_> {
                 "Apply to {}?",
                 plural(apply.len(), "repository", "repositories")
             );
-            if self.ui.confirm(&question, true)? != Some(true) {
-                return Ok(());
+            loop {
+                let entries = vec![
+                    (Item::new("Yes", ""), Apply::Yes),
+                    (
+                        Item::new("Show the details", "file by file"),
+                        Apply::Details,
+                    ),
+                    (Item::new("No", "keep the changes for later"), Apply::No),
+                ];
+                match self.menu(&question, Vec::new(), entries)? {
+                    Some(Apply::Yes) => break,
+                    Some(Apply::Details) => changing.iter().for_each(|r| render::report(r, false)),
+                    None | Some(Apply::No) => return Ok(()),
+                }
             }
             for repo in &apply {
                 engine::run(self.config, repo, true)?;
@@ -118,6 +137,45 @@ impl Session<'_> {
             }
         }
         Ok(())
+    }
+
+    /// One line per repository: what a sync would change there.
+    fn outline(&self, r: &Report) {
+        let count =
+            |states: &[FileState]| r.files.iter().filter(|f| states.contains(&f.state)).count();
+        let mut parts: Vec<String> = Vec::new();
+        for (n, word) in [
+            (count(&[FileState::Missing]), "to install"),
+            (count(&[FileState::Outdated]), "to update"),
+            (count(&[FileState::Stale]), "to remove"),
+            (
+                count(&[FileState::Modified, FileState::Conflict]),
+                "to settle",
+            ),
+        ] {
+            if n > 0 {
+                parts.push(format!("{} {word}", plural(n, "file", "files")));
+            }
+        }
+        if !r.settings.missing.is_empty() || !r.settings.removed.is_empty() {
+            parts.push("settings".into());
+        }
+        if !r.settings.clash.is_empty() {
+            parts.push(format!(
+                "{} kept",
+                plural(r.settings.clash.len(), "setting", "settings")
+            ));
+        }
+        if r.exclude {
+            parts.push("git exclude".into());
+        }
+        if parts.is_empty() {
+            parts.push("up to date".into());
+        }
+        self.ui.say(
+            Tone::Plain,
+            &format!("  {:<24} {}", name(&r.repo), parts.join(" · ")),
+        );
     }
 
     /// Returns false when the user leaves the remaining conflicts for later.

@@ -3,6 +3,8 @@
 use super::{Key, Line, Step, Tone, Widget, answered, question};
 
 type Check<'a> = Box<dyn Fn(&str) -> Result<(), String> + 'a>;
+/// Text so far to (completed text, choices left when several match).
+type Complete<'a> = Box<dyn Fn(&str) -> (String, Vec<String>) + 'a>;
 
 /// A one-line text field, checked when validated.
 pub struct Input<'a> {
@@ -10,6 +12,8 @@ pub struct Input<'a> {
     pub value: Vec<char>,
     cursor: usize,
     check: Check<'a>,
+    complete: Option<Complete<'a>>,
+    choices: Vec<String>,
     error: Option<String>,
 }
 
@@ -25,8 +29,15 @@ impl<'a> Input<'a> {
             cursor: value.len(),
             value,
             check: Box::new(check),
+            complete: None,
+            choices: Vec::new(),
             error: None,
         }
+    }
+
+    pub fn complete(mut self, f: impl Fn(&str) -> (String, Vec<String>) + 'a) -> Self {
+        self.complete = Some(Box::new(f));
+        self
     }
 
     pub fn text(&self) -> String {
@@ -41,7 +52,17 @@ impl<'a> Input<'a> {
 impl Widget for Input<'_> {
     fn key(&mut self, key: Key, _page: usize) -> Step {
         self.error = None;
+        self.choices.clear();
         match key {
+            Key::Tab => {
+                if let Some(f) = &self.complete {
+                    let typed: String = self.value.iter().collect();
+                    let (text, choices) = f(&typed);
+                    self.value = text.chars().collect();
+                    self.cursor = self.value.len();
+                    self.choices = choices;
+                }
+            }
             Key::Char(c) => {
                 self.value.insert(self.cursor, c);
                 self.cursor += 1;
@@ -73,9 +94,14 @@ impl Widget for Input<'_> {
     }
 
     fn lines(&mut self, _height: usize) -> Vec<Line> {
+        let tab = if self.complete.is_some() {
+            " · tab complete"
+        } else {
+            ""
+        };
         let mut help = vec![(
             Tone::Dim,
-            "  enter confirm · esc back · ctrl+u clear".into(),
+            format!("  enter confirm{tab} · esc back · ctrl+u clear"),
         )];
         if let Some(e) = &self.error {
             help.push((Tone::Bad, format!("  ✖ {e}")));
@@ -83,7 +109,14 @@ impl Widget for Input<'_> {
         let mut line = question(&self.title);
         line.push((Tone::Dim, " › ".into()));
         line.push((Tone::Plain, self.value.iter().collect()));
-        vec![line, help]
+        let mut out = vec![line, help];
+        if !self.choices.is_empty() {
+            out.push(vec![(
+                Tone::Accent,
+                format!("  {}", self.choices.join("  ")),
+            )]);
+        }
+        out
     }
 
     fn cursor(&self) -> Option<(usize, usize)> {
@@ -172,6 +205,17 @@ mod tests {
         i.key(Key::Char('z'), 0);
         assert_eq!(i.key(Key::Enter, 0), Step::Done);
         assert_eq!(i.text(), "z");
+    }
+
+    #[test]
+    fn tab_completes_and_lists_the_choices() {
+        let mut i = Input::new("folder", "~/c", |_| Ok(()))
+            .complete(|t| (format!("{t}ode/"), vec!["app".into(), "lib".into()]));
+        i.key(Key::Tab, 0);
+        assert_eq!(i.text(), "~/code/");
+        assert!(text(&i.lines(5))[2].contains("app  lib"));
+        i.key(Key::Char('a'), 0);
+        assert_eq!(text(&i.lines(5)).len(), 2, "typing hides the choices");
     }
 
     #[test]

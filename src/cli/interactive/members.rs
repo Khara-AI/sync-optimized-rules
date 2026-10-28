@@ -1,15 +1,14 @@
 //! Repositories and workspaces of a group.
 
-use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use sync_optimized_rules::config::DEFAULT_DEPTH;
 use sync_optimized_rules::discover;
-use sync_optimized_rules::error::{IoContext, Result};
+use sync_optimized_rules::error::Result;
 use sync_optimized_rules::fsutil;
 
-use super::{Session, expand, plural, short};
+use super::paths::{short, start_folder};
+use super::{Session, plural};
 use crate::cli::tui::{Item, List};
 
 #[derive(Clone, Copy)]
@@ -69,42 +68,43 @@ impl Session<'_> {
         }
     }
 
-    fn ask_folder(&self, title: &str) -> Result<Option<PathBuf>> {
-        let Some(text) = self.ui.text(title, &short(&start_folder()), |s| {
-            if expand(s).is_dir() {
-                Ok(())
-            } else {
-                Err("not a folder".into())
-            }
-        })?
-        else {
-            return Ok(None);
-        };
-        let path = expand(&text);
-        Ok(Some(fs::canonicalize(&path).at(&path)?))
-    }
-
+    /// Pick repositories in one folder, then in as many others as needed.
     /// Returns whether repositories were added.
     pub(super) fn add_repos(&mut self, group: &str) -> Result<bool> {
-        let Some(folder) = self.ask_folder("Folder to look into")? else {
-            return Ok(false);
-        };
+        let mut start = start_folder();
+        let mut added = 0;
+        while let Some(folder) = self.ask_folder("Folder to look into", &start, None)? {
+            added += self.add_from(group, &folder)?;
+            let more = if added == 0 {
+                "Look in another folder?"
+            } else {
+                "Add repositories from another folder too?"
+            };
+            if self.ui.confirm(more, added == 0)? != Some(true) {
+                break;
+            }
+            start = folder.parent().map_or(folder.clone(), Path::to_path_buf);
+        }
+        Ok(added > 0)
+    }
+
+    fn add_from(&mut self, group: &str, folder: &Path) -> Result<usize> {
         let known = self.config.repos(group)?;
-        let found: Vec<PathBuf> = discover::repos(&folder, DEFAULT_DEPTH)
+        let found: Vec<PathBuf> = discover::repos(folder, DEFAULT_DEPTH)
             .into_iter()
             .filter(|r| !known.contains(r))
             .collect();
         if found.is_empty() {
             self.warn(&format!(
                 "no new git repository in {} ({DEFAULT_DEPTH} levels down)",
-                short(&folder)
+                short(folder)
             ));
-            return Ok(false);
+            return Ok(0);
         }
         let items = found
             .iter()
             .map(|r| {
-                let label = match r.strip_prefix(&folder).map(fsutil::slash) {
+                let label = match r.strip_prefix(folder).map(fsutil::slash) {
                     Ok(rel) if !rel.is_empty() => rel,
                     _ => short(r),
                 };
@@ -121,24 +121,26 @@ impl Session<'_> {
             items,
             Vec::new(),
         )
-        .required();
+        .notes(vec![format!("in {}", short(folder))]);
         let Some(picked) = self.ui.tick(list)? else {
-            return Ok(false);
+            return Ok(0);
         };
         for &i in &picked {
             self.config.add_member(group, &found[i], false, None)?;
         }
-        self.config.save()?;
-        self.dirty = true;
-        self.ok(&format!(
-            "{} added",
-            plural(picked.len(), "repository", "repositories")
-        ));
-        Ok(true)
+        if !picked.is_empty() {
+            self.config.save()?;
+            self.dirty = true;
+            self.ok(&format!(
+                "{} added",
+                plural(picked.len(), "repository", "repositories")
+            ));
+        }
+        Ok(picked.len())
     }
 
     fn add_workspace(&mut self, group: &str) -> Result<()> {
-        let Some(folder) = self.ask_folder("Workspace folder")? else {
+        let Some(folder) = self.ask_folder("Workspace folder", &start_folder(), None)? else {
             return Ok(());
         };
         let n = discover::repos(&folder, DEFAULT_DEPTH).len();
@@ -185,16 +187,5 @@ impl Session<'_> {
             plural(picked.len(), "member", "members")
         ));
         Ok(())
-    }
-}
-
-/// The current folder, or its parent when it is itself a repository: the
-/// folder where its sibling repositories are.
-fn start_folder() -> PathBuf {
-    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    if discover::is_repo(&cwd) {
-        cwd.parent().map_or(cwd.clone(), Path::to_path_buf)
-    } else {
-        cwd
     }
 }

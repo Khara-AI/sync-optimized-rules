@@ -41,7 +41,7 @@ On Windows, `$env:SOR_UNINSTALL = 1` before the install command. For the plugin,
 
 ## Usage
 
-Run `sor` in a terminal: menus guide you through creating a group, picking its repositories, choosing the rules to share and installing them (arrows to move, space to tick, enter to confirm, esc to go back). Conflicts are settled there too, with the difference shown.
+Run `sor` in a terminal: menus guide you through creating a group, picking its repositories in as many folders as needed, gathering the rules of one or several of them into one or several scopes, and installing them (arrows to move, space to tick, enter to confirm, esc to go back, tab to complete a folder). When two repositories hold different versions of a rule, both are kept under their repository's name and `sor` offers to merge them with Claude Code if `claude` is installed. Conflicts are settled there too, with the difference shown.
 
 Every step also exists as a command, for scripts:
 

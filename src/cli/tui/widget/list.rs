@@ -101,7 +101,7 @@ impl Widget for List {
                     self.cursor - 1
                 }
             }
-            Key::Down => {
+            Key::Down | Key::Tab => {
                 self.cursor = if self.cursor >= last {
                     0
                 } else {

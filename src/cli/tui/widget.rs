@@ -20,6 +20,7 @@ pub enum Key {
     Esc,
     Space,
     Backspace,
+    Tab,
     Char(char),
     /// Ctrl+A: tick or untick every visible item.
     All,
