@@ -193,14 +193,10 @@ pub fn candidates(config: &Config, repo: &Path) -> Result<Vec<Candidate>> {
         .collect())
 }
 
-/// Allow, deny and ask entries of `repo/.claude/settings.json`.
-pub fn permission_count(repo: &Path) -> Result<usize> {
+/// Allow, deny and ask entries of `repo/.claude/settings.json`, in that order.
+pub fn permission_counts(repo: &Path) -> Result<[usize; 3]> {
     let project = fsutil::read_json(&repo.join(PROJECT_SETTINGS))?.unwrap_or(Value::Null);
-    Ok(PERMISSIONS
-        .iter()
-        .filter_map(|k| project["permissions"][k].as_array())
-        .map(Vec::len)
-        .sum())
+    Ok(PERMISSIONS.map(|k| project["permissions"][k].as_array().map_or(0, Vec::len)))
 }
 
 /// Files named by `paths`, relative to `repo/.claude/`. Folders expand to

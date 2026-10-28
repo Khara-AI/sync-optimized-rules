@@ -8,7 +8,7 @@ use sync_optimized_rules::error::Result;
 
 use super::kind;
 use crate::cli::interactive::{Session, plural};
-use crate::cli::tui::{Item, List};
+use crate::cli::tui::{Item, List, Tone};
 
 /// Files bound for one scope, as indexes into the gathered files.
 pub(super) struct Batch {
@@ -170,17 +170,36 @@ impl Session<'_> {
         repos: &[PathBuf],
         batches: &[Batch],
     ) -> Result<Option<Option<usize>>> {
-        let mut total = 0;
+        let mut counts = [0; 3];
         for r in repos {
-            total += capture::permission_count(r)?;
+            let c = capture::permission_counts(r)?;
+            counts.iter_mut().zip(c).for_each(|(t, n)| *t += n);
         }
-        if total == 0 {
+        if counts == [0; 3] {
             return Ok(Some(None));
         }
-        let rules = plural(total, "permission rule", "permission rules");
+        let [allow, deny, ask] = counts;
+        let split: Vec<String> = [(allow, "allow"), (deny, "deny"), (ask, "ask")]
+            .iter()
+            .filter(|(n, _)| *n > 0)
+            .map(|(n, k)| format!("{n} {k}"))
+            .collect();
+        for line in [
+            "  Permissions of .claude/settings.json: commands Claude runs without asking (allow),",
+            "  never runs (deny), or asks about first (ask). Shared, every repository of the group gets them.",
+        ] {
+            self.ui.say(Tone::Dim, line);
+        }
+        if allow > 0 {
+            self.ui.say(
+                Tone::Dim,
+                "  Allow rules grant the same rights in every repository: check they fit them all.",
+            );
+        }
         let whose = if repos.len() > 1 { "their" } else { "its" };
-        let question = format!("Also share {whose} {rules} (allow, deny, ask)?");
-        match self.ui.confirm(&question, false)? {
+        let question = format!("Share {whose} permissions too? ({})", split.join(", "));
+        // Deny and ask only restrict Claude: safe to share by default.
+        match self.ui.confirm(&question, allow == 0)? {
             None => return Ok(None),
             Some(false) => return Ok(Some(None)),
             Some(true) => {}
