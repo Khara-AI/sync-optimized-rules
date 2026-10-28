@@ -67,7 +67,7 @@ After a capture, the repository it came from has its original files next to the 
 All of them are clients of the same library:
 
 - `sor` CLI: commands for scripts, `--json` for machines, and an interactive mode (bare `sor`, `sor setup`) with keyboard menus.
-- Claude Code plugin: a `/sor:setup` skill that drives the CLI and shows groups and drift as tables in the chat, and a `SessionStart` hook that warns when the current repository drifted from its groups.
+- Claude Code plugin: `bin/sor` (the `sor` on the user's `PATH`, else a release downloaded on first use) and a `/sor:sor` skill that asks the menus' questions with Claude's question tool and drives the CLI. Long lists are written out with their paths and answered in free text. `sor find`, `sor scan`, `sor scope capture` with several `--from`, `sor scope merge --file` and `sor diff` give it everything the menus see. The terminal install stays the main way; the plugin is for those who start from Claude, and both share one configuration. A `SessionStart` hook that warns when the current repository drifted from its groups is still to come.
 - Editor extension (later, TypeScript): a view of groups and conflicts over `sor --json`.
 
 ## Code layout
@@ -97,4 +97,4 @@ src/discover.rs      repository discovery
 src/paths.rs         config home
 ```
 
-To come: the plugin's skill and `SessionStart` hook.
+To come: the plugin's `SessionStart` hook.

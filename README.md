@@ -6,7 +6,7 @@
 
 ## Install
 
-Pick the way you install, then unfold it. Every way ends with the same `sor` command.
+Pick the way you install, then unfold it. The terminal install is the main one: keyboard menus, lists of any length, nothing to type twice. The plugin lets Claude set things up for you with the same questions. **Best: install both**, they share the same configuration.
 
 <details>
 <summary><b>Linux and macOS</b> (one-line script)</summary>
@@ -37,7 +37,7 @@ Check it works in a new terminal: `sor --version`.
 </details>
 
 <details>
-<summary><b>Claude Code plugin</b> (Claude runs <code>sor</code> for you)</summary>
+<summary><b>Claude Code plugin</b> (Claude asks the questions and runs <code>sor</code>)</summary>
 
 In Claude Code:
 
@@ -46,9 +46,9 @@ In Claude Code:
 /plugin install sor@sync-optimized-rules
 ```
 
-The plugin puts a `sor` command at Claude's disposal. It uses the `sor` on your `PATH` when there is one, else downloads the latest release on first use. You never build anything.
+Then type **`/sor:sor`**. Claude walks you through the same steps as the menus: group, repositories, files to capture, one or several scopes, permissions, merging versions, sync and conflicts. Short choices come as a question dialog; long lists (many repositories or files) are written out with their paths, and you type the numbers or names. You can also say what you want right away: `/sor:sor share the git rules of ~/code/app with ~/code/api`.
 
-Then ask Claude in plain words, for example *"with sor, make a group web with ~/code/app and ~/code/api, capture the git rules of app into a scope commits, and sync"*. Claude drives the commands of [Use it from commands](#use-it-from-commands): the keyboard menus need a real terminal, so inside Claude Code everything goes through commands.
+The plugin's `sor` is the one on your `PATH` when you installed it in your terminal too; otherwise it downloads the latest release on first use, for Claude only. It does not add `sor` to your own terminal: install it there as well to get the keyboard menus.
 
 - **Update:** `/plugin marketplace update sync-optimized-rules`
 - **Uninstall:** `/plugin uninstall sor@sync-optimized-rules`
@@ -100,7 +100,7 @@ Run `sor` in a terminal. Arrows move, space ticks, enter confirms, esc goes back
 
 ## Use it from commands
 
-Every step of the menus exists as a command, for scripts and for Claude. Every command accepts `--json`; `sor --help` lists them all.
+Every step of the menus exists as a command, for scripts and for Claude: the plugin's `/sor:sor` drives these. Every command accepts `--json`; `sor --help` lists them all.
 
 <details>
 <summary><b>The same first setup, from commands</b></summary>
@@ -126,14 +126,31 @@ sor tidy ~/code/app .claude/rules/anonymity.md .claude/hooks/guard.py .claude/ru
 ```
 
 `--permissions` also shares the `allow`, `deny` and `ask` rules of the source repository. `--move` on `scope capture` does the tidying right away; tidying after the sync, as above, means Claude never goes without the rules.
+</details>
 
-Capturing from several repositories at once, with the versions merged by Claude, is only in the menus for now.
+<details>
+<summary><b>Gathering rules from several repositories</b></summary>
+
+```sh
+sor find ~/code                          # repositories inside, with their .claude/ files and groups
+sor scan ~/code/app ~/code/api           # what they could share, and their permissions
+
+# Identical files count once; versions that differ are named after their repository
+sor scope capture web conventions rules --from ~/code/app --from ~/code/api --permissions
+
+# Replace the versions with one file: yours, or merged by claude when --file is left out
+sor scope merge web conventions rules/git.md rules/app-git.md rules/api-git.md --file merged-git.md
+sor sync
+```
+
+A path (`rules/git.md`, or a folder like `rules`) takes every version; a version name (`rules/app-git.md`) only that one.
 </details>
 
 <details>
 <summary><b>Day to day, from commands</b></summary>
 
 ```sh
+sor diff ~/code/app .claude/rules/web/conventions/git.md       # the group's version against yours
 sor resolve ~/code/app .claude/rules/web/conventions/git.md keep|take|promote
 sor group exclude web ~/code/api anonymity     # this repository skips a scope
 sor group include web ~/code/api anonymity
