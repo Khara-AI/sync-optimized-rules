@@ -11,14 +11,22 @@ Pick the way you install, then unfold it. The terminal install is the main one: 
 <details>
 <summary><b>Linux and macOS</b> (one-line script)</summary>
 
+`sor` and the Claude Code plugin (needs `claude` on your `PATH`):
+
+```sh
+curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh | sh -s -- --plugin
+```
+
+`sor` only:
+
 ```sh
 curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh | sh
 ```
 
-The script downloads the latest release for your system into `~/.local/bin`. If that folder is not on your `PATH`, it tells you to add it.
+The script downloads the latest release for your system into `~/.local/bin`. If that folder is not on your `PATH`, it tells you to add it. With `--plugin`, it then runs `claude plugin install sor --marketplace Khara-AI/sync-optimized-rules`; run `/reload-plugins` in an open Claude Code to load it.
 
 - **Update:** `sor update`. It also updates the Claude Code plugin, with its skills, when it is installed.
-- **Uninstall:** `curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh | sh -s -- --uninstall`
+- **Uninstall:** `curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh | sh -s -- --uninstall`, with `--plugin` added to remove the plugin too.
 
 Check it works: `sor --version`.
 </details>
@@ -26,12 +34,20 @@ Check it works: `sor --version`.
 <details>
 <summary><b>Windows</b> (PowerShell)</summary>
 
+`sor` and the Claude Code plugin (needs `claude` on your `PATH`):
+
+```powershell
+$env:SOR_PLUGIN = 1; irm https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.ps1 | iex
+```
+
+`sor` only:
+
 ```powershell
 irm https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.ps1 | iex
 ```
 
 - **Update:** `sor update`. It also updates the Claude Code plugin, with its skills, when it is installed.
-- **Uninstall:** `$env:SOR_UNINSTALL = 1` then the same command.
+- **Uninstall:** `$env:SOR_UNINSTALL = 1` then the `sor` only command; set `$env:SOR_PLUGIN = 1` as well to remove the plugin too.
 
 Check it works in a new terminal: `sor --version`.
 </details>
@@ -48,7 +64,7 @@ In Claude Code:
 
 Then type **`/sor:sor`**. Claude walks you through the same steps as the menus: group, repositories, files to capture, one or several scopes, permissions, merging versions, sync and conflicts. Short choices come as a question dialog; long lists (many repositories or files) are written out with their paths, and you type the numbers or names. You can also say what you want right away: `/sor:sor share the git rules of ~/code/app with ~/code/api`.
 
-The plugin's `sor` is the one on your `PATH` when you installed it in your terminal too; otherwise it downloads the latest release on first use, for Claude only. It does not add `sor` to your own terminal: install it there as well to get the keyboard menus.
+The plugin's `sor` is the one on your `PATH` when you installed it in your terminal too; otherwise it downloads the latest release on first use, for Claude only. To get the keyboard menus in your own terminal as well, type **`/sor:cli`**: it installs the same version there.
 
 - **Update:** `/sor:update`. It also updates `sor` in your terminal when it is installed there. By hand: `/plugin marketplace update sync-optimized-rules`.
 - **Uninstall:** `/plugin uninstall sor@sync-optimized-rules`
