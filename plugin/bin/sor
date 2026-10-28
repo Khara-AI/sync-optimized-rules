@@ -15,8 +15,13 @@ unset IFS
 cache="${CLAUDE_PLUGIN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/sync-optimized-rules}/bin"
 if [ ! -x "$cache/sor" ]; then
   echo "sor: downloading the latest release..." >&2
-  curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh \
-    | SOR_INSTALL_DIR="$cache" sh >/dev/null
+  url="https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh"
+  # Fetched first: piped straight into sh, a failed download would pass for success.
+  if ! script="$(curl -fsSL "$url")" \
+    || ! printf '%s\n' "$script" | SOR_INSTALL_DIR="$cache" sh >/dev/null; then
+    echo "sor: the download failed. Install sor by hand: https://github.com/Khara-AI/sync-optimized-rules#install" >&2
+    exit 1
+  fi
   echo "sor: this copy is Claude's. For the keyboard menus in your own terminal, run /sor:cli" >&2
 fi
 export SOR_PLUGIN_COPY=1

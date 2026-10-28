@@ -164,8 +164,14 @@ fn install(dir: Option<&Path>, version: &str) -> std::result::Result<String, Str
         ]);
         c
     } else {
+        // Fetched first: piped straight into sh, a failed download would pass.
         let mut c = Command::new("sh");
-        c.args(["-c", &format!("curl -fsSL {base}/install.sh | sh")]);
+        c.args([
+            "-c",
+            r#"script="$(curl -fsSL "$1")" && printf '%s\n' "$script" | sh"#,
+            "sh",
+            &format!("{base}/install.sh"),
+        ]);
         c
     };
     if let Some(dir) = dir {
