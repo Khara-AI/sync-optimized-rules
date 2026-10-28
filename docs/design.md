@@ -18,7 +18,7 @@ groups/<group>/<scope>/
   scope.json                    description, kind, settings fragment
   rules/**                      -> .claude/rules/<group>/<scope>/
   files/**                      -> .claude/sor/<group>/<scope>/   (hook scripts, term lists)
-  agents/*.md                   -> .claude/agents/                 (opt-in)
+  agents/**                     -> .claude/agents/<group>/<scope>/  (opt-in)
 history/<group>/<scope>/<time>/ previous versions replaced by a promote
 ```
 
@@ -27,11 +27,14 @@ In each member repository:
 ```
 .claude/rules/<group>/<scope>/  installed rules (namespaced: groups never collide)
 .claude/sor/<group>/<scope>/    installed support files
+.claude/agents/<group>/<scope>/ installed agents, when the group opts in
 .claude/sor/state.json          what sor wrote: file hashes, owned settings entries
 .claude/sor/trash/, backup/     files moved aside instead of deleted
 .claude/settings.local.json     settings fragments merged here, entry by entry
 .git/info/exclude               a marked block keeping all of the above out of git
 ```
+
+Claude Code reads `.claude/rules/` and `.claude/agents/` recursively, so namespacing by folder costs nothing and lets one repository belong to several groups. Agents are identified by their `name` field, not their path: two groups shipping the same agent name is reported as a conflict.
 
 ## No overwrite
 
