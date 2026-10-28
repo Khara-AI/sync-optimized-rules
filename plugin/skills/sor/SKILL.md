@@ -21,7 +21,7 @@ Always pass `--json` when you read state, and read `sor --help` once if a comman
 ## Start
 
 1. `sor --version` must work: the plugin provides `sor`, downloading it on first use.
-2. `sor group list --json`. If the user said what they want in `$ARGUMENTS`, go straight to it. Otherwise ask: each group (description: its repositories and shared scopes), **New group**, **Status**, **Sync**.
+2. `sor group list --json`. If the user already said what they want (in their message, or after the command: "$ARGUMENTS"), go straight to it. Otherwise ask: each group (description: its repositories and shared scopes), **New group**, **Status**, **Sync**.
 
 ## New group
 
