@@ -17,7 +17,7 @@ curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/down
 
 The script downloads the latest release for your system into `~/.local/bin`. If that folder is not on your `PATH`, it tells you to add it.
 
-- **Update:** run the same command again.
+- **Update:** `sor update`. It also updates the Claude Code plugin, with its skills, when it is installed.
 - **Uninstall:** `curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh | sh -s -- --uninstall`
 
 Check it works: `sor --version`.
@@ -30,7 +30,7 @@ Check it works: `sor --version`.
 irm https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.ps1 | iex
 ```
 
-- **Update:** run the same command again.
+- **Update:** `sor update`. It also updates the Claude Code plugin, with its skills, when it is installed.
 - **Uninstall:** `$env:SOR_UNINSTALL = 1` then the same command.
 
 Check it works in a new terminal: `sor --version`.
@@ -50,7 +50,7 @@ Then type **`/sor:sor`**. Claude walks you through the same steps as the menus: 
 
 The plugin's `sor` is the one on your `PATH` when you installed it in your terminal too; otherwise it downloads the latest release on first use, for Claude only. It does not add `sor` to your own terminal: install it there as well to get the keyboard menus.
 
-- **Update:** `/plugin marketplace update sync-optimized-rules`
+- **Update:** `/sor:update`. It also updates `sor` in your terminal when it is installed there. By hand: `/plugin marketplace update sync-optimized-rules`.
 - **Uninstall:** `/plugin uninstall sor@sync-optimized-rules`
 
 To try a local checkout instead of the published plugin: `/plugin marketplace add /path/to/sync-optimized-rules`.
