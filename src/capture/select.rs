@@ -8,8 +8,9 @@ use crate::config::Config;
 use crate::error::{Error, IoContext, Result};
 use crate::fsutil;
 
-/// Files named by `paths`, relative to `repo/.claude/`. Folders expand to
-/// their files; sor's own files, settings and CLAUDE.md are never taken.
+/// Files named by `paths`, relative to `repo/.claude/` (as `sor scan` names
+/// them, with or without `.claude/`). Folders expand to their files; sor's own
+/// files, settings and CLAUDE.md are never taken.
 pub(super) fn files(config: &Config, repo: &Path, paths: &[PathBuf]) -> Result<Vec<String>> {
     let claude = repo.join(".claude");
     let mut out: Vec<String> = Vec::new();
@@ -17,7 +18,8 @@ pub(super) fn files(config: &Config, repo: &Path, paths: &[PathBuf]) -> Result<V
         let abs = if p.is_absolute() {
             p.clone()
         } else {
-            repo.join(p)
+            let p = p.strip_prefix(".").unwrap_or(p);
+            claude.join(p.strip_prefix(".claude").unwrap_or(p))
         };
         let abs = fs::canonicalize(&abs).at(&abs)?;
         let rel = abs.strip_prefix(&claude).map(fsutil::slash).map_err(|_| {

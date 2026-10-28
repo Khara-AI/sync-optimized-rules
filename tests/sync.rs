@@ -97,7 +97,7 @@ impl Sandbox {
             "g",
             "rules",
             ".claude/rules/git.md",
-            ".claude/hooks",
+            "hooks",
             "--from",
             &self.path(src),
             "--permissions",
