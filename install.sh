@@ -1,23 +1,52 @@
 #!/bin/sh
 # Install or update to the latest sor release (Linux, macOS).
 #   curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh | sh
-# Uninstall: same command followed by `-s -- --uninstall`.
+# Add `-s -- --plugin` to install the Claude Code plugin too, `-s -- --uninstall`
+# to remove sor (with `--plugin`, the plugin as well).
 # SOR_INSTALL_DIR overrides the target folder (default ~/.local/bin),
-# SOR_VERSION pins a release (e.g. 0.1.0).
+# SOR_VERSION pins a release (e.g. 0.1.0), SOR_MARKETPLACE installs the plugin
+# from another source (a local checkout).
 set -eu
 
 repo="Khara-AI/sync-optimized-rules"
 dest="${SOR_INSTALL_DIR:-$HOME/.local/bin}"
+marketplace="${SOR_MARKETPLACE:-$repo}"
 
-if [ "${1:-}" = "--uninstall" ]; then
+plugin=""
+uninstall=""
+for arg in "$@"; do
+  case "$arg" in
+    --plugin) plugin=1 ;;
+    --uninstall) uninstall=1 ;;
+    *) echo "sor: unknown option $arg (use --plugin, --uninstall)" >&2; exit 1 ;;
+  esac
+done
+
+need_claude() {
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "sor: claude was not found. Install Claude Code, then run:" >&2
+    echo "  claude plugin $1" >&2
+    exit 1
+  fi
+}
+
+if [ -n "$uninstall" ]; then
   if [ -e "$dest/sor" ]; then
     rm "$dest/sor"
     echo "sor removed from $dest."
   else
     echo "sor is not installed in $dest."
   fi
+  if [ -n "$plugin" ]; then
+    need_claude "uninstall sor@sync-optimized-rules"
+    claude plugin uninstall sor@sync-optimized-rules
+    claude plugin marketplace remove sync-optimized-rules
+  fi
   echo "Your configuration is left in ${XDG_CONFIG_HOME:-$HOME/.config}/sync-optimized-rules."
   exit 0
+fi
+if [ -n "$plugin" ]; then
+  need_claude "install sor --marketplace $repo"
 fi
 
 case "$(uname -s)" in
@@ -62,3 +91,8 @@ case ":$PATH:" in
   *":$dest:"*) ;;
   *) echo "Add $dest to your PATH to run it." ;;
 esac
+
+if [ -n "$plugin" ]; then
+  claude plugin install sor --marketplace "$marketplace"
+  echo "In Claude Code, run /reload-plugins (or restart it), then /sor:sor."
+fi
