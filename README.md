@@ -45,11 +45,17 @@ On Windows, `$env:SOR_UNINSTALL = 1` before the install command. For the plugin,
 sor group add web --description "web projects"
 sor member add web ~/code/example-app            # one repository
 sor member add web ~/code/clients --workspace    # every repository inside
-sor repos web
-sor group list --json
+
+# Turn rules a repository already has into a scope shared by the group
+sor scope capture web commits .claude/rules/git.md --from ~/code/example-app --permissions
+
+sor status                  # what differs, in every member (exit code 2 on drift)
+sor sync --dry-run
+sor sync
+sor resolve ~/code/example-app .claude/rules/web/commits/git.md keep|take|promote
 ```
 
-A fresh install has no groups: your configuration lives in `~/.config/sync-optimized-rules` (or `$SOR_HOME`) and is yours alone.
+Every command accepts `--json`. A fresh install has no groups: your configuration lives in `~/.config/sync-optimized-rules` (or `$SOR_HOME`) and is yours alone. See [docs/design.md](docs/design.md) for how files are compared and merged.
 
 ## Principles
 
