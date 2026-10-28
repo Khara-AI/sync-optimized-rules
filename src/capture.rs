@@ -3,17 +3,19 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::config::{Config, check_name};
-use crate::engine::BACKUP;
 use crate::error::{Error, IoContext, Result};
 use crate::fsutil;
 use crate::settings::{self, Item};
 use crate::store::{Area, Meta};
+
+mod tidy;
+
+pub use tidy::{Tidy, tidy};
 
 const PROJECT_SETTINGS: &str = ".claude/settings.json";
 const PERMISSIONS: [&str; 3] = ["allow", "deny", "ask"];
@@ -27,14 +29,6 @@ pub struct Capture {
     pub permissions: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tidy: Option<Tidy>,
-}
-
-#[derive(Debug, Default, Serialize)]
-pub struct Tidy {
-    pub moved: Vec<String>,
-    /// Events whose hook entries left `.claude/settings.json`.
-    pub hooks: Vec<String>,
-    pub applied: bool,
 }
 
 pub struct Options<'a> {
@@ -118,50 +112,36 @@ pub fn capture(
     })
 }
 
-/// Move originals now installed by sor to `backup/`, and drop the hook
-/// entries of `.claude/settings.json` that ran them (after a backup).
-pub fn tidy(config: &Config, repo: &Path, paths: &[PathBuf], apply: bool) -> Result<Tidy> {
-    let repo = fs::canonicalize(repo).at(repo)?;
-    let files = select(config, &repo, paths)?;
-    let mut touched: Vec<String> = files.iter().map(|f| format!(".claude/{f}")).collect();
-    let settings_file = repo.join(PROJECT_SETTINGS);
-    let mut project = fsutil::read_json(&settings_file)?.unwrap_or(Value::Null);
-    let entries = hook_entries(&project, &files);
-    if !entries.is_empty() {
-        touched.push(PROJECT_SETTINGS.to_owned());
-    }
-    refuse_tracked(&repo, &touched)?;
+/// A file of `.claude/` a scope could take.
+#[derive(Debug, Serialize)]
+pub struct Candidate {
+    /// Relative to `.claude/`.
+    pub path: String,
+    /// A hook of `.claude/settings.json` runs it, and will follow it.
+    pub hooked: bool,
+}
 
-    let report = Tidy {
-        moved: touched[..files.len()].to_vec(),
-        hooks: entries.iter().map(|(e, _, _)| e.clone()).collect(),
-        applied: apply,
-    };
-    if !apply {
-        return Ok(report);
-    }
-    let stamp = fsutil::stamp();
-    for rel in &report.moved {
-        fsutil::relocate(&repo, rel, BACKUP, &stamp)?;
-        fsutil::relocate_cache(&repo, rel, BACKUP, &stamp)?;
-        fsutil::prune_empty(&repo.join(".claude"), &repo.join(rel));
-    }
-    if !entries.is_empty() {
-        let saved = repo.join(BACKUP).join(&stamp).join(PROJECT_SETTINGS);
-        fsutil::copy_atomic(&settings_file, &saved)?;
-        for (event, original, _) in &entries {
-            settings::remove(
-                &mut project,
-                &Item {
-                    path: vec!["hooks".into(), event.clone()],
-                    value: original.clone(),
-                    set: false,
-                },
-            );
-        }
-        fsutil::write_json(&settings_file, &project)?;
-    }
-    Ok(report)
+/// What `repo/.claude/` holds that a scope could capture.
+pub fn candidates(config: &Config, repo: &Path) -> Result<Vec<Candidate>> {
+    let project = fsutil::read_json(&repo.join(PROJECT_SETTINGS))?.unwrap_or(Value::Null);
+    Ok(fsutil::files_under(&repo.join(".claude"))
+        .into_iter()
+        .filter(|f| !owned_elsewhere(config, f))
+        .map(|path| Candidate {
+            hooked: !hook_entries(&project, std::slice::from_ref(&path)).is_empty(),
+            path,
+        })
+        .collect())
+}
+
+/// Allow, deny and ask entries of `repo/.claude/settings.json`.
+pub fn permission_count(repo: &Path) -> Result<usize> {
+    let project = fsutil::read_json(&repo.join(PROJECT_SETTINGS))?.unwrap_or(Value::Null);
+    Ok(PERMISSIONS
+        .iter()
+        .filter_map(|k| project["permissions"][k].as_array())
+        .map(Vec::len)
+        .sum())
 }
 
 /// Files named by `paths`, relative to `repo/.claude/`. Folders expand to
@@ -253,35 +233,43 @@ fn hook_entries(project: &Value, files: &[String]) -> Vec<(String, Value, Value)
     out
 }
 
-/// sor never moves or edits a file git tracks: that change belongs in a commit.
-fn refuse_tracked(repo: &Path, paths: &[String]) -> Result<()> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["ls-files", "--"])
-        .args(paths)
-        .output()
-        .map_err(|e| Error::Io(repo.to_path_buf(), e))?;
-    if !out.status.success() {
-        return Err(Error::invalid(format!(
-            "git could not list the tracked files of {}",
-            repo.display()
-        )));
-    }
-    let tracked = String::from_utf8_lossy(&out.stdout);
-    if tracked.trim().is_empty() {
-        return Ok(());
-    }
-    Err(Error::invalid(format!(
-        "tracked by git, change them with a commit instead: {}",
-        tracked.split_whitespace().collect::<Vec<_>>().join(", ")
-    )))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::TempDir;
     use serde_json::json;
+
+    #[test]
+    fn candidates_leave_out_settings_and_sor_files() {
+        let tmp = TempDir::new("candidates");
+        let repo = tmp.path().join("app");
+        let settings = json!({ "hooks": { "Stop": [{ "hooks": [{ "type": "command",
+            "command": "sh $CLAUDE_PROJECT_DIR/.claude/hooks/end.sh" }] }] } });
+        for (rel, text) in [
+            ("rules/git.md", String::new()),
+            ("hooks/end.sh", String::new()),
+            ("CLAUDE.md", String::new()),
+            ("sor/state.json", String::new()),
+            ("settings.json", settings.to_string()),
+        ] {
+            let path = repo.join(".claude").join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+        let config = Config::load(&tmp.path().join("home")).unwrap();
+        let found: Vec<(String, bool)> = candidates(&config, &repo)
+            .unwrap()
+            .into_iter()
+            .map(|c| (c.path, c.hooked))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                ("hooks/end.sh".into(), true),
+                ("rules/git.md".into(), false)
+            ]
+        );
+    }
 
     #[test]
     fn hook_paths_are_rewritten_to_the_scope_folder() {

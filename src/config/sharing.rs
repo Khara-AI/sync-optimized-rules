@@ -103,6 +103,17 @@ impl Config {
         Ok(())
     }
 
+    pub fn unimport(&mut self, group: &str, from: &str, scopes: &[String]) -> Result<()> {
+        let imports = &mut self.group_mut(group)?.imports;
+        if let Some(list) = imports.get_mut(from) {
+            list.retain(|s| !scopes.contains(s));
+            if list.is_empty() {
+                imports.remove(from);
+            }
+        }
+        Ok(())
+    }
+
     /// Scopes `repo` receives from all its groups, each once.
     pub fn plan(&self, repo: &Path) -> Result<Vec<Planned>> {
         let mut out: Vec<Planned> = Vec::new();

@@ -17,7 +17,7 @@ use crate::store::{Area, Store};
 
 mod resolve;
 
-pub use resolve::{Resolution, resolve};
+pub use resolve::{Resolution, group_copy, resolve};
 
 pub const TRASH: &str = ".claude/sor/trash";
 pub const BACKUP: &str = ".claude/sor/backup";

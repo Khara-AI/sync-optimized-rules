@@ -1,8 +1,8 @@
 //! Settling a conflict on one file: keep, take or promote.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use super::{BACKUP, FileState, classify, targets};
+use super::{BACKUP, FileState, Target, classify, targets};
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::fsutil;
@@ -31,19 +31,32 @@ impl Resolution {
     }
 }
 
-pub fn resolve(config: &Config, repo: &Path, file: &str, how: Resolution) -> Result<String> {
+fn target(config: &Config, repo: &Path, file: &str) -> Result<(String, Target)> {
     let file = file.replace('\\', "/");
     let file = Path::new(&file)
         .strip_prefix(repo)
         .map_or(file.clone(), fsutil::slash);
+    let t = targets(&config.store(), &config.plan(repo)?)
+        .into_iter()
+        .find(|t| t.path == file)
+        .ok_or_else(|| {
+            Error::invalid(format!(
+                "{file} is not a file sor installs in {}",
+                repo.display()
+            ))
+        })?;
+    Ok((file, t))
+}
+
+/// The group's copy of a file sor installs in `repo`.
+pub fn group_copy(config: &Config, repo: &Path, file: &str) -> Result<PathBuf> {
+    Ok(target(config, repo, file)?.1.src)
+}
+
+pub fn resolve(config: &Config, repo: &Path, file: &str, how: Resolution) -> Result<String> {
     let store = config.store();
-    let targets = targets(&store, &config.plan(repo)?);
-    let t = targets.iter().find(|t| t.path == file).ok_or_else(|| {
-        Error::invalid(format!(
-            "{file} is not a file sor installs in {}",
-            repo.display()
-        ))
-    })?;
+    let (file, t) = target(config, repo, file)?;
+    let t = &t;
     let mut state = State::load(repo)?;
     let dest = repo.join(&t.path);
     let cur = fsutil::hash_file(&dest);
