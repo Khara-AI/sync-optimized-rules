@@ -52,6 +52,22 @@ pub fn relocate(root: &Path, rel: &str, bin: &str, stamp: &str) -> Result<String
     Ok(moved)
 }
 
+/// Move aside the `__pycache__` that would be all that is left next to a
+/// moved script, so its folder can go.
+pub fn relocate_cache(root: &Path, rel: &str, bin: &str, stamp: &str) -> Result<()> {
+    let Some(dir) = Path::new(rel).parent() else {
+        return Ok(());
+    };
+    let only_cache = fs::read_dir(root.join(dir))
+        .map(|mut it| it.all(|e| e.is_ok_and(|e| e.file_name() == "__pycache__")))
+        .unwrap_or(false);
+    let cache = dir.join("__pycache__");
+    if only_cache && root.join(&cache).is_dir() {
+        relocate(root, &slash(&cache), bin, stamp)?;
+    }
+    Ok(())
+}
+
 /// Remove the folders `file` leaves empty, up to `stop` (excluded).
 pub fn prune_empty(stop: &Path, file: &Path) {
     let mut dir = file.parent();

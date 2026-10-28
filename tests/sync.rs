@@ -288,3 +288,22 @@ fn tidy_moves_originals_aside_but_never_tracked_files() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("tracked by git"));
     assert!(sb.exists("src/.claude/rules/local.md"));
 }
+
+#[test]
+fn leaving_every_scope_leaves_no_trace_but_trash() {
+    let sb = Sandbox::new("leave");
+    sb.group("src", &["a"]);
+    sb.ok(&["sync", &sb.path("a")]);
+    sb.write("a/.claude/sor/g/rules/hooks/__pycache__/guard.pyc", "");
+    sb.ok(&["group", "unshare", "g", "rules"]);
+    sb.ok(&["sync", &sb.path("a")]);
+    assert!(
+        !sb.exists("a/.claude/sor/g"),
+        "python caches do not keep folders alive"
+    );
+    assert!(!sb.exists("a/.claude/rules"));
+    assert!(
+        !sb.exists("a/.claude/settings.local.json"),
+        "no empty settings file left behind"
+    );
+}

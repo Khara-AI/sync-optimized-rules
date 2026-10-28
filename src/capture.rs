@@ -143,6 +143,7 @@ pub fn tidy(config: &Config, repo: &Path, paths: &[PathBuf], apply: bool) -> Res
     let stamp = fsutil::stamp();
     for rel in &report.moved {
         fsutil::relocate(&repo, rel, BACKUP, &stamp)?;
+        fsutil::relocate_cache(&repo, rel, BACKUP, &stamp)?;
         fsutil::prune_empty(&repo.join(".claude"), &repo.join(rel));
     }
     if !entries.is_empty() {

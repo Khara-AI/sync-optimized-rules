@@ -238,6 +238,7 @@ pub fn run(config: &Config, repo: &Path, apply: bool) -> Result<Report> {
         if apply {
             if present {
                 fsutil::relocate(repo, &path, TRASH, &stamp)?;
+                fsutil::relocate_cache(repo, &path, TRASH, &stamp)?;
                 fsutil::prune_empty(&repo.join(".claude"), &repo.join(&path));
             }
             state.files.remove(&path);
@@ -272,7 +273,10 @@ pub fn run(config: &Config, repo: &Path, apply: bool) -> Result<Report> {
         }
     }
     if apply {
-        if doc != before {
+        if doc.as_object().is_some_and(Map::is_empty) && doc != before {
+            // Nothing left but what sor removed: the file goes, not an empty `{}`.
+            fsutil::relocate(repo, repo::SETTINGS, TRASH, &stamp)?;
+        } else if doc != before {
             fsutil::write_json(&settings_file, &doc)?;
         }
         state.settings = owned;
