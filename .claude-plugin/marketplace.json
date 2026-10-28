@@ -1,6 +1,9 @@
 {
   "name": "sync-optimized-rules",
-  "owner": { "name": "Khara-AI" },
+  "owner": {
+    "name": "Khara-AI"
+  },
+  "description": "sor: keep the Claude Code rules of many repositories in sync.",
   "plugins": [
     {
       "name": "sor",
