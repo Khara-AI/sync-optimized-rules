@@ -1,0 +1,36 @@
+[package]
+name = "sync-optimized-rules"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Keep the Claude Code rules of many repositories in sync, by groups and scopes, locally and without overwriting anything."
+license = "Apache-2.0"
+repository = "https://github.com/Khara-AI/sync-optimized-rules"
+readme = "README.md"
+keywords = ["claude-code", "rules", "sync", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "sor"
+path = "src/main.rs"
+
+[dependencies]
+# Argument parsing: a few hundred lines, no proc macros (clap would triple build time and size).
+lexopt = "0.3"
+# Config, per-repository state, settings.local.json and --json output are all JSON;
+# std has no JSON support.
+serde = { version = "1", default-features = false, features = ["std", "derive"] }
+serde_json = { version = "1", default-features = false, features = ["std"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
