@@ -2,7 +2,7 @@
 //!
 //! It lives in `<config home>/config.json` and starts empty: sor ships no
 //! one's groups. The reference copy of each scope lives next to it, in
-//! `<config home>/groups/<group>/<scope>/` (see `store`, to come).
+//! `<config home>/groups/<group>/<scope>/` (see `store`).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -12,6 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::discover;
 use crate::error::{Error, IoContext, Result};
+use crate::fsutil;
+use crate::store::Store;
+
+mod sharing;
+
+pub use sharing::Planned;
 
 const FILE: &str = "config.json";
 const VERSION: u32 = 1;
@@ -32,7 +38,7 @@ pub struct Group {
     pub members: Vec<Member>,
     /// Scopes of this group installed in every member.
     pub scopes: Vec<String>,
-    /// Whether scopes of kind "agents" are installed. Off by default:
+    /// Whether the `agents/` of its scopes are installed. Off by default:
     /// agents are optimisation, not safety rules.
     pub agents: bool,
     /// Scopes a given repository opts out of.
@@ -53,6 +59,9 @@ pub struct Member {
 
 pub const DEFAULT_DEPTH: usize = 2;
 
+/// Folders sor keeps for itself under `.claude/sor/`, next to group folders.
+const RESERVED: [&str; 2] = ["trash", "backup"];
+
 impl Config {
     /// Load the configuration under `root`, or an empty one if there is none yet.
     pub fn load(root: &Path) -> Result<Self> {
@@ -72,13 +81,7 @@ impl Config {
 
     /// Write atomically: a crash never leaves a half-written configuration.
     pub fn save(&self) -> Result<()> {
-        fs::create_dir_all(&self.root).at(&self.root)?;
-        let file = self.root.join(FILE);
-        let tmp = file.with_extension("json.tmp");
-        // Serialising plain maps, strings and bools cannot fail.
-        let text = serde_json::to_string_pretty(self).expect("config is serialisable") + "\n";
-        fs::write(&tmp, text).at(&tmp)?;
-        fs::rename(&tmp, &file).at(&file)
+        fsutil::write_json(&self.root.join(FILE), self)
     }
 
     pub fn root(&self) -> &Path {
@@ -95,6 +98,9 @@ impl Config {
 
     pub fn add_group(&mut self, name: &str, description: &str) -> Result<()> {
         check_name("group", name)?;
+        if RESERVED.contains(&name) {
+            return Err(Error::invalid(format!("'{name}' is reserved by sor")));
+        }
         if self.groups.contains_key(name) {
             return Err(Error::invalid(format!("group '{name}' already exists")));
         }
@@ -183,6 +189,21 @@ impl Config {
                 }
             }
         }
+        Ok(out)
+    }
+
+    pub fn store(&self) -> Store {
+        Store::new(&self.root)
+    }
+
+    /// Every repository of every group.
+    pub fn all_repos(&self) -> Result<Vec<PathBuf>> {
+        let mut out = Vec::new();
+        for name in self.groups.keys() {
+            out.extend(self.repos(name)?);
+        }
+        out.sort();
+        out.dedup();
         Ok(out)
     }
 }

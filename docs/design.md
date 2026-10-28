@@ -3,10 +3,10 @@
 ## Concepts
 
 - **Group**: a set of repositories that share rules. Members are repositories, or workspace folders whose repositories are discovered (default depth 2, nested checkouts belong to their parent).
-- **Scope**: one coherent set of rules, e.g. `anonymity`, `commits`, `rust`. A scope has a kind: `rules` (safety, conventions) or `agents` (optimisation, installed only when the group sets `agents: true`).
+- **Scope**: one coherent set of rules, e.g. `anonymity`, `commits`, `rust`: rule files, support files (hook scripts, term lists), a settings fragment, and optionally agents. Agents are optimisation rather than safety, so they are installed only in groups that set `agents: true`.
 - **Sharing**: a group lists the scopes it installs in every member. A repository can exclude scopes. A group can import single scopes from another group without the two groups merging.
 
-A fresh install has no group and no scope. The interactive setup builds the user's own configuration: discover repositories, capture the rules a repository already has as scopes, or start from generic templates.
+A fresh install has no group and no scope. The user builds their own: `sor scope capture` turns files a repository already has under `.claude/` into a scope (the hooks of `.claude/settings.json` that run those files follow, rewritten to the installed path; `--permissions` also takes its allow/deny/ask lists). The interactive setup (to come) drives the same commands.
 
 ## On disk
 
@@ -15,11 +15,11 @@ Configuration home (`$SOR_HOME`, else `~/.config/sync-optimized-rules`, `%APPDAT
 ```
 config.json                     groups, members, scopes, exclusions, imports
 groups/<group>/<scope>/
-  scope.json                    description, kind, settings fragment
+  scope.json                    description, settings fragment
   rules/**                      -> .claude/rules/<group>/<scope>/
   files/**                      -> .claude/sor/<group>/<scope>/   (hook scripts, term lists)
   agents/**                     -> .claude/agents/<group>/<scope>/  (opt-in)
-history/<group>/<scope>/<time>/ previous versions replaced by a promote
+history/<group>/<scope>/<time>/ previous versions replaced by a promote or a new capture
 ```
 
 In each member repository:
@@ -34,7 +34,9 @@ In each member repository:
 .git/info/exclude               a marked block keeping all of the above out of git
 ```
 
-Claude Code reads `.claude/rules/` and `.claude/agents/` recursively, so namespacing by folder costs nothing and lets one repository belong to several groups. Agents are identified by their `name` field, not their path: two groups shipping the same agent name is reported as a conflict.
+Claude Code reads `.claude/rules/` and `.claude/agents/` recursively, so namespacing by folder costs nothing and lets one repository belong to several groups. Agents are identified by their `name` field, not their path: give agents of different groups different names (detecting duplicates is planned).
+
+In settings fragments, `{{dir}}` stands for the scope's installed support folder, `$CLAUDE_PROJECT_DIR/.claude/sor/<group>/<scope>`.
 
 ## No overwrite
 
@@ -48,10 +50,17 @@ For each target file, comparing its current content with the group's version and
 | modified | edited since sor wrote it | report a conflict |
 | conflict | a file sor never wrote is in the way | report a conflict |
 | kept | the user chose to keep a local version | nothing, until the group's version changes |
+| stale | sor wrote it, no scope installs it any more | move it to `trash/` |
 
 Conflicts are resolved per file: **keep** the local file, **take** the group's (the local one goes to `backup/`), or **promote** the local file to the group (the previous version goes to the store history; every member gets it at its next sync).
 
 Settings fragments are flattened into entries: list items are added to the list if absent, scalars are only set when the key is absent (otherwise a clash is reported). sor records the entries it added and removes only those when a scope leaves; entries the user wrote are never touched.
+
+`sor status` runs the same comparison without applying anything and exits with 2 when anything differs; `sor sync` exits with 2 when conflicts or clashes remain.
+
+## Tidying originals
+
+After a capture, the repository it came from has its original files next to the copies sor installs. `sor tidy <repo> <path>...` (or `capture --move`) moves the originals to `.claude/sor/backup/` and removes from `.claude/settings.json` the hook entries that ran them, after copying it to the same backup. It is the one command that edits `settings.json`, only on request, and it refuses files git tracks: those change through a commit.
 
 ## Interfaces
 
@@ -64,12 +73,21 @@ All of them are clients of the same library:
 ## Code layout
 
 ```
-src/main.rs        entry point
-src/cli.rs         argument parsing and rendering
-src/lib.rs         library root
-src/config.rs      groups and members
-src/discover.rs    repository discovery
-src/paths.rs       config home
+src/main.rs          entry point
+src/cli.rs           argument parsing and dispatch
+src/cli/render.rs    human and JSON output
+src/lib.rs           library root
+src/config.rs        groups and members
+src/config/sharing.rs  shared scopes, exclusions, imports, plan per repository
+src/store.rs         scopes on disk
+src/capture.rs       capture and tidy
+src/engine.rs        status and sync
+src/engine/resolve.rs  keep, take, promote
+src/repo.rs          per-repository state and exclude block
+src/settings.rs      settings fragment merge
+src/fsutil.rs        hashing, atomic writes, moving aside
+src/discover.rs      repository discovery
+src/paths.rs         config home
 ```
 
-To come, as the features land: `store` (scopes on disk), `repo` (per-repository state and exclude block), `settings` (fragment merge), `engine` (status, sync, resolve) and `cli/interactive`.
+To come: `cli/interactive` (keyboard menus), the plugin's skill and `SessionStart` hook.
