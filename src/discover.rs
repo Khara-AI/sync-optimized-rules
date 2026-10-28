@@ -69,15 +69,10 @@ mod tests {
         ] {
             fs::create_dir_all(tmp.path().join(p)).unwrap();
         }
-        let names: Vec<_> = repos(tmp.path(), 2)
+        let found: Vec<_> = repos(tmp.path(), 2)
             .iter()
-            .map(|p| {
-                p.strip_prefix(tmp.path())
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned()
-            })
+            .map(|p| p.strip_prefix(tmp.path()).unwrap().to_path_buf())
             .collect();
-        assert_eq!(names, ["a", "group/b"]);
+        assert_eq!(found, [Path::new("a"), &Path::new("group").join("b")]);
     }
 }
