@@ -86,9 +86,4 @@ Changes to groups take effect at the next `sor sync`: offer it before you finish
 
 ## The terminal version
 
-The `sor` keyboard menus in the user's own terminal are the main way to use sor: faster, with lists of any length. The plugin's `sor` only exists for Claude. Once per session, at the end, if `type -a sor` finds no `sor` outside the plugin, tell the user they can install it in their terminal too. Give the line for their system:
-
-- Linux and macOS: `curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh | sh`
-- Windows: `irm https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.ps1 | iex`
-
-Both share the same configuration, so what they set up here is already there.
+The `sor` keyboard menus in the user's own terminal are the main way to use sor: faster, with lists of any length. The plugin's `sor` only exists for Claude. Once per session, at the end, if `type -a sor` finds no `sor` outside the plugin, tell the user they can install it in their terminal with `/sor:cli`. Both share the same configuration, so what they set up here is already there.

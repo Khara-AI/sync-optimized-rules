@@ -172,3 +172,22 @@ fn the_plugin_follows_the_version_of_sor() {
         serde_json::from_str(&fs::read_to_string(manifest).unwrap()).unwrap();
     assert_eq!(plugin["version"], env!("CARGO_PKG_VERSION"));
 }
+
+#[test]
+fn install_cli_leaves_a_terminal_sor_alone() {
+    // Only the copy the plugin's launcher downloaded installs itself.
+    let out = Command::new(env!("CARGO_BIN_EXE_sor"))
+        .args(["install-cli", "--json"])
+        .env_remove("SOR_PLUGIN_COPY")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let steps: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(steps[0]["done"], false);
+    assert!(
+        steps[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("already installed")
+    );
+}

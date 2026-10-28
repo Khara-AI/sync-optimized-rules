@@ -63,6 +63,8 @@ Repositories (all repositories of all groups when <repo> is omitted):
 Maintenance:
   sor update [--dry-run]                      sor to the latest release, and the Claude
                                               Code plugin with its skills when installed
+  sor install-cli [--dry-run]                 from the Claude Code plugin: install this
+                                              version of sor in your own terminal
 
 Options:
   --json        machine-readable output
@@ -127,6 +129,7 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
         ["setup"] if tui::available() => return interactive::run(&mut config),
         ["setup"] => return Err(Error::invalid("sor setup needs a terminal")),
         ["update"] => update::run(json, f.dry_run)?,
+        ["install-cli"] => update::install_cli(json, f.dry_run)?,
         ["group", "list"] => render::groups(&config, json),
         ["group", "add", name] => {
             config.add_group(name, f.description.as_deref().unwrap_or(""))?;

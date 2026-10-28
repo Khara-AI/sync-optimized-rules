@@ -1,5 +1,6 @@
 //! `sor update`: the binary to the latest release, and the Claude Code plugin
-//! (with its skills) when it is installed.
+//! (with its skills) when it is installed. `sor install-cli`: the plugin's copy
+//! of sor into the user's own terminal.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -23,18 +24,50 @@ struct Step {
 pub(super) fn run(json: bool, dry_run: bool) -> Result<()> {
     let mut steps = vec![binary(dry_run)];
     steps.extend(plugin(dry_run));
+    show(json, &steps);
+    Ok(())
+}
+
+/// The plugin's launcher sets this when it runs the copy it downloaded.
+const PLUGIN_COPY: &str = "SOR_PLUGIN_COPY";
+
+pub(super) fn install_cli(json: bool, dry_run: bool) -> Result<()> {
+    show(json, &[terminal(dry_run)]);
+    Ok(())
+}
+
+fn terminal(dry_run: bool) -> Step {
+    let what = "terminal";
+    let version = env!("CARGO_PKG_VERSION");
+    if env::var_os(PLUGIN_COPY).is_none() {
+        let at = env::current_exe().map_or_else(|_| "sor".into(), |p| p.display().to_string());
+        return step(
+            what,
+            false,
+            format!("sor {version} is already installed: {at}"),
+        );
+    }
+    if dry_run {
+        return step(what, false, format!("would install sor {version}"));
+    }
+    match install(None, version) {
+        Ok(said) => step(what, true, said),
+        Err(e) => step(what, false, format!("install of sor {version} failed: {e}")),
+    }
+}
+
+fn show(json: bool, steps: &[Step]) {
     if json {
         println!("{}", json!(steps));
-        return Ok(());
+        return;
     }
-    for s in &steps {
+    for s in steps {
         let mark = if s.done { "✔" } else { "·" };
         println!("{mark} {}: {}", s.what, s.message);
     }
     if steps.iter().any(|s| s.done && s.what.starts_with("plugin")) {
         println!("Restart Claude Code, or run /reload-plugins, to load the new plugin.");
     }
-    Ok(())
 }
 
 fn step(what: &str, done: bool, message: impl Into<String>) -> Step {
@@ -75,9 +108,21 @@ fn binary(dry_run: bool) -> Step {
             format!("{current} → {latest} in {}", dir.display()),
         );
     }
-    match install(&dir, &latest) {
-        Ok(()) => step(what, true, format!("{current} → {latest}")),
-        Err(e) => step(what, false, format!("update to {latest} failed: {e}")),
+    // A running .exe cannot be overwritten, but it can be renamed.
+    let (exe, old) = (dir.join("sor.exe"), dir.join("sor.old.exe"));
+    if cfg!(windows)
+        && let Err(e) = std::fs::rename(&exe, &old)
+    {
+        return step(what, false, format!("update to {latest} failed: {e}"));
+    }
+    match install(Some(&dir), &latest) {
+        Ok(_) => step(what, true, format!("{current} → {latest}")),
+        Err(e) => {
+            if cfg!(windows) {
+                let _ = std::fs::rename(&old, &exe);
+            }
+            step(what, false, format!("update to {latest} failed: {e}"))
+        }
     }
 }
 
@@ -106,14 +151,11 @@ fn newer(latest: &str, current: &str) -> bool {
     matches!((parse(latest), parse(current)), (Some(l), Some(c)) if l > c)
 }
 
-/// Run the release's own install script into the folder sor runs from.
-fn install(dir: &Path, version: &str) -> std::result::Result<(), String> {
+/// Run the release's own install script, into `dir` or its default folder.
+/// Returns what the script said last (where sor went, how to reach it).
+fn install(dir: Option<&Path>, version: &str) -> std::result::Result<String, String> {
     let base = format!("https://github.com/{REPO}/releases/download/v{version}");
     let mut cmd = if cfg!(windows) {
-        // A running .exe cannot be overwritten, but it can be renamed.
-        let exe = dir.join("sor.exe");
-        let old = dir.join("sor.old.exe");
-        std::fs::rename(&exe, &old).map_err(|e| e.to_string())?;
         let mut c = Command::new("powershell");
         c.args([
             "-NoProfile",
@@ -126,18 +168,23 @@ fn install(dir: &Path, version: &str) -> std::result::Result<(), String> {
         c.args(["-c", &format!("curl -fsSL {base}/install.sh | sh")]);
         c
     };
+    if let Some(dir) = dir {
+        cmd.env("SOR_INSTALL_DIR", dir);
+    }
     let out = cmd
-        .env("SOR_INSTALL_DIR", dir)
         .env("SOR_VERSION", version)
         .output()
         .map_err(|e| e.to_string())?;
-    if out.status.success() {
-        return Ok(());
+    if !out.status.success() {
+        return Err(last_line(&out));
     }
-    if cfg!(windows) {
-        let _ = std::fs::rename(dir.join("sor.old.exe"), dir.join("sor.exe"));
-    }
-    Err(last_line(&out))
+    let said = String::from_utf8_lossy(&out.stdout);
+    Ok(said
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("; "))
 }
 
 /// Every installed copy of the sor plugin, through the `claude` command.

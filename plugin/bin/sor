@@ -16,8 +16,8 @@ cache="${CLAUDE_PLUGIN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/sync-optimized
 if [ ! -x "$cache/sor" ]; then
   echo "sor: downloading the latest release..." >&2
   curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh \
-    | SOR_INSTALL_DIR="$cache" sh >&2
-  echo "sor: this copy is Claude's. For the keyboard menus in your own terminal, install sor there too:" >&2
-  echo "  curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh | sh" >&2
+    | SOR_INSTALL_DIR="$cache" sh >/dev/null
+  echo "sor: this copy is Claude's. For the keyboard menus in your own terminal, run /sor:cli" >&2
 fi
+export SOR_PLUGIN_COPY=1
 exec "$cache/sor" "$@"
