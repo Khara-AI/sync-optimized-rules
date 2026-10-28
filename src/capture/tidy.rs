@@ -30,7 +30,8 @@ pub fn tidy(config: &Config, repo: &Path, paths: &[PathBuf], apply: bool) -> Res
     let mut touched: Vec<String> = files.iter().map(|f| format!(".claude/{f}")).collect();
     let settings_file = repo.join(PROJECT_SETTINGS);
     let mut project = fsutil::read_json(&settings_file)?.unwrap_or(Value::Null);
-    let entries = hook_entries(&project, &files);
+    let pairs: Vec<(&str, &str)> = files.iter().map(|f| (f.as_str(), f.as_str())).collect();
+    let entries = hook_entries(&project, &pairs);
     if !entries.is_empty() {
         touched.push(PROJECT_SETTINGS.to_owned());
     }

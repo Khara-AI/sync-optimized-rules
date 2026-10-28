@@ -13,8 +13,15 @@ use crate::fsutil;
 use crate::settings::{self, Item};
 use crate::store::{Area, Meta};
 
+mod gather;
+mod hooks;
+mod merge;
 mod tidy;
 
+use hooks::hook_entries;
+
+pub use gather::{Found, gather};
+pub use merge::{claude, merge};
 pub use tidy::{Tidy, tidy};
 
 const PROJECT_SETTINGS: &str = ".claude/settings.json";
@@ -46,14 +53,57 @@ pub fn capture(
     paths: &[PathBuf],
     opts: &Options,
 ) -> Result<Capture> {
+    let repo = fs::canonicalize(repo).at(repo)?;
+    let found: Vec<Found> = select(config, &repo, paths)?
+        .into_iter()
+        .map(|path| Found {
+            name: path.clone(),
+            path,
+            repos: vec![repo.clone()],
+            hooked: false,
+        })
+        .collect();
+    let permissions = if opts.permissions {
+        std::slice::from_ref(&repo)
+    } else {
+        &[]
+    };
+    let mut report = capture_found(config, group, scope, &found, opts.description, permissions)?;
+    if opts.move_originals {
+        report.tidy = Some(tidy(config, &repo, paths, true)?);
+    }
+    Ok(report)
+}
+
+/// Copy gathered files into the scope under their scope names, with the hooks
+/// that run them and the permission rules of `permissions_from`, and share it.
+pub fn capture_found(
+    config: &mut Config,
+    group: &str,
+    scope: &str,
+    found: &[Found],
+    description: Option<&str>,
+    permissions_from: &[PathBuf],
+) -> Result<Capture> {
     check_name("scope", scope)?;
     config.group(group)?;
-    let repo = fs::canonicalize(repo).at(repo)?;
-    let files = select(config, &repo, paths)?;
+    if found.is_empty() {
+        return Err(Error::invalid("nothing to capture"));
+    }
     let store = config.store();
-    for rel in &files {
-        let (area, inner) = Area::of(rel);
-        store.put(group, scope, area, inner, &repo.join(".claude").join(rel))?;
+    for f in found {
+        let repo = f
+            .repos
+            .first()
+            .ok_or_else(|| Error::invalid(format!("{} comes from no repository", f.path)))?;
+        let (area, inner) = Area::of(&f.name);
+        store.put(
+            group,
+            scope,
+            area,
+            inner,
+            &repo.join(".claude").join(&f.path),
+        )?;
     }
 
     let mut meta = if store.exists(group, scope) {
@@ -61,32 +111,47 @@ pub fn capture(
     } else {
         Meta::default()
     };
-    if let Some(d) = opts.description {
+    if let Some(d) = description {
         meta.description = d.to_owned();
     }
-    let project = fsutil::read_json(&repo.join(PROJECT_SETTINGS))?.unwrap_or(Value::Null);
-    let mut items: Vec<Item> = hook_entries(&project, &files)
-        .into_iter()
-        .map(|(event, _, rewritten)| Item {
-            path: vec!["hooks".into(), event],
-            value: rewritten,
-            set: false,
-        })
-        .collect();
-    let hooks: Vec<String> = items.iter().map(|i| i.path[1].clone()).collect();
-    let before = items.len();
-    if opts.permissions {
+    let mut repos: Vec<&PathBuf> = found.iter().flat_map(|f| &f.repos).collect();
+    repos.extend(permissions_from);
+    repos.sort();
+    repos.dedup();
+    let mut items: Vec<Item> = Vec::new();
+    let mut hooks: Vec<String> = Vec::new();
+    let mut permissions = 0;
+    for repo in repos {
+        let project = fsutil::read_json(&repo.join(PROJECT_SETTINGS))?.unwrap_or(Value::Null);
+        let files: Vec<(&str, &str)> = found
+            .iter()
+            .filter(|f| f.repos.contains(repo))
+            .map(|f| (f.path.as_str(), f.name.as_str()))
+            .collect();
+        for (event, _, rewritten) in hook_entries(&project, &files) {
+            if !hooks.contains(&event) {
+                hooks.push(event.clone());
+            }
+            items.push(Item {
+                path: vec!["hooks".into(), event],
+                value: rewritten,
+                set: false,
+            });
+        }
+        if !permissions_from.contains(repo) {
+            continue;
+        }
         for key in PERMISSIONS {
-            if let Some(list) = project["permissions"][key].as_array() {
-                items.extend(list.iter().map(|v| Item {
+            for v in project["permissions"][key].as_array().into_iter().flatten() {
+                permissions += 1;
+                items.push(Item {
                     path: vec!["permissions".into(), key.into()],
                     value: v.clone(),
                     set: false,
-                }));
+                });
             }
         }
     }
-    let permissions = items.len() - before;
     let mut doc = Value::Object(std::mem::take(&mut meta.settings));
     for item in &items {
         settings::add(&mut doc, item);
@@ -96,19 +161,13 @@ pub fn capture(
     }
     store.save_meta(group, scope, &meta)?;
     config.share(group, &[scope.to_owned()])?;
-
-    let tidy = if opts.move_originals {
-        Some(tidy(config, &repo, paths, true)?)
-    } else {
-        None
-    };
     Ok(Capture {
         group: group.to_owned(),
         scope: scope.to_owned(),
-        files,
+        files: found.iter().map(|f| f.name.clone()).collect(),
         hooks,
         permissions,
-        tidy,
+        tidy: None,
     })
 }
 
@@ -128,7 +187,7 @@ pub fn candidates(config: &Config, repo: &Path) -> Result<Vec<Candidate>> {
         .into_iter()
         .filter(|f| !owned_elsewhere(config, f))
         .map(|path| Candidate {
-            hooked: !hook_entries(&project, std::slice::from_ref(&path)).is_empty(),
+            hooked: !hook_entries(&project, &[(path.as_str(), path.as_str())]).is_empty(),
             path,
         })
         .collect())
@@ -202,37 +261,6 @@ fn owned_elsewhere(config: &Config, rel: &str) -> bool {
         })
 }
 
-/// Hook entries whose command runs one of `files`, as (event, entry, entry
-/// with the path rewritten to the scope's installed folder).
-fn hook_entries(project: &Value, files: &[String]) -> Vec<(String, Value, Value)> {
-    let Some(hooks) = project["hooks"].as_object() else {
-        return Vec::new();
-    };
-    let files: Vec<&String> = files
-        .iter()
-        .filter(|f| Area::of(f).0 == Area::Files)
-        .collect();
-    let mut out = Vec::new();
-    for (event, list) in hooks {
-        for entry in list.as_array().into_iter().flatten() {
-            let text = entry.to_string();
-            let mut rewritten = text.clone();
-            for f in &files {
-                for var in ["$CLAUDE_PROJECT_DIR", "${CLAUDE_PROJECT_DIR}"] {
-                    rewritten = rewritten
-                        .replace(&format!("{var}/.claude/{f}"), &format!("{{{{dir}}}}/{f}"));
-                }
-            }
-            if rewritten != text {
-                if let Ok(v) = serde_json::from_str(&rewritten) {
-                    out.push((event.clone(), entry.clone(), v));
-                }
-            }
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,21 +296,6 @@ mod tests {
                 ("hooks/end.sh".into(), true),
                 ("rules/git.md".into(), false)
             ]
-        );
-    }
-
-    #[test]
-    fn hook_paths_are_rewritten_to_the_scope_folder() {
-        let project = json!({ "hooks": { "PreToolUse": [
-            { "matcher": "Bash", "hooks": [{ "type": "command",
-              "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\"" }] },
-            { "matcher": "Edit", "hooks": [{ "type": "command", "command": "other" }] }
-        ] } });
-        let found = hook_entries(&project, &["hooks/guard.py".into()]);
-        assert_eq!(found.len(), 1);
-        assert_eq!(
-            found[0].2["hooks"][0]["command"],
-            "python3 \"{{dir}}/hooks/guard.py\""
         );
     }
 }

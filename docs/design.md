@@ -6,7 +6,7 @@
 - **Scope**: one coherent set of rules, e.g. `anonymity`, `commits`, `rust`: rule files, support files (hook scripts, term lists), a settings fragment, and optionally agents. Agents are optimisation rather than safety, so they are installed only in groups that set `agents: true`.
 - **Sharing**: a group lists the scopes it installs in every member. A repository can exclude scopes. A group can import single scopes from another group without the two groups merging.
 
-A fresh install has no group and no scope. The user builds their own: `sor scope capture` turns files a repository already has under `.claude/` into a scope (the hooks of `.claude/settings.json` that run those files follow, rewritten to the installed path; `--permissions` also takes its allow/deny/ask lists). The interactive setup (to come) drives the same commands.
+A fresh install has no group and no scope. The user builds their own: `sor scope capture` turns files a repository already has under `.claude/` into a scope (the hooks of `.claude/settings.json` that run those files follow, rewritten to the installed path; `--permissions` also takes its allow/deny/ask lists). The interactive setup drives the same library: it can gather files from several repositories at once (identical copies count once; each different version of a path is kept as `<folder>/<repository>-<file>`, its hooks rewritten to that name) and split them across several scopes. Versions can then be merged by `claude -p` with no tools; the merged file takes the plain name, the versions go to `history/` and their hook entries point at the merged file.
 
 ## On disk
 
@@ -78,12 +78,15 @@ src/cli.rs           argument parsing and dispatch
 src/cli/render.rs    human and JSON output
 src/cli/tui.rs       terminal: raw keys, widgets drawn in place
 src/cli/tui/widget/  lists, text fields, yes/no (pure state, tested without a terminal)
-src/cli/interactive/ menus: groups, members, scopes, sync and conflicts
+src/cli/interactive/ menus: groups, members, capture, scopes, sync and conflicts
 src/lib.rs           library root
 src/config.rs        groups and members
 src/config/sharing.rs  shared scopes, exclusions, imports, plan per repository
 src/store.rs         scopes on disk
 src/capture.rs       capture, and what a repository could capture
+src/capture/gather.rs files of several repositories, versions named apart
+src/capture/merge.rs merging versions with Claude Code
+src/capture/hooks.rs hook entries that run captured files
 src/capture/tidy.rs  moving originals aside
 src/engine.rs        status and sync
 src/engine/resolve.rs  keep, take, promote
