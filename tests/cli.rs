@@ -163,3 +163,12 @@ fn the_capture_menus_work_from_commands_too() {
     let local = fs::read_to_string(sb.0.join("ws/lib/.claude/settings.local.json")).unwrap();
     assert!(local.contains("git push"), "permissions follow: {local}");
 }
+
+#[test]
+fn the_plugin_follows_the_version_of_sor() {
+    // Claude Code updates a plugin only when its version changes.
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin/.claude-plugin/plugin.json");
+    let plugin: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(manifest).unwrap()).unwrap();
+    assert_eq!(plugin["version"], env!("CARGO_PKG_VERSION"));
+}

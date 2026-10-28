@@ -7,6 +7,7 @@ mod interactive;
 mod render;
 mod scope;
 mod tui;
+mod update;
 
 use std::ffi::OsString;
 use std::fs;
@@ -58,6 +59,10 @@ Repositories (all repositories of all groups when <repo> is omitted):
   sor diff <repo> <file>                      the group's version of a conflict against yours
   sor resolve <repo> <file> keep|take|promote
   sor tidy <repo> <path>... [--dry-run]       move originals to .claude/sor/backup/
+
+Maintenance:
+  sor update [--dry-run]                      sor to the latest release, and the Claude
+                                              Code plugin with its skills when installed
 
 Options:
   --json        machine-readable output
@@ -121,6 +126,7 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
         [] => println!("{HELP}"),
         ["setup"] if tui::available() => return interactive::run(&mut config),
         ["setup"] => return Err(Error::invalid("sor setup needs a terminal")),
+        ["update"] => update::run(json, f.dry_run)?,
         ["group", "list"] => render::groups(&config, json),
         ["group", "add", name] => {
             config.add_group(name, f.description.as_deref().unwrap_or(""))?;
