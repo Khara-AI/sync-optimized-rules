@@ -1,0 +1,11 @@
+{
+  "name": "sync-optimized-rules",
+  "owner": { "name": "Khara-AI" },
+  "plugins": [
+    {
+      "name": "sor",
+      "source": "./plugin",
+      "description": "Keep the Claude Code rules of many repositories in sync, by groups and scopes, locally and without overwriting anything."
+    }
+  ]
+}

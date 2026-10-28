@@ -1,0 +1,21 @@
+#!/bin/sh
+# Run the sor binary: the one on PATH if any, else a cached copy of the
+# latest release, downloaded on first use. Users never build anything.
+set -eu
+
+self="$(cd "$(dirname "$0")" && pwd)/sor"
+IFS=:
+for dir in $PATH; do
+  if [ -x "$dir/sor" ] && [ "$dir/sor" != "$self" ]; then
+    exec "$dir/sor" "$@"
+  fi
+done
+unset IFS
+
+cache="${CLAUDE_PLUGIN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/sync-optimized-rules}/bin"
+if [ ! -x "$cache/sor" ]; then
+  echo "sor: downloading the latest release..." >&2
+  curl -fsSL https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh \
+    | SOR_INSTALL_DIR="$cache" sh >&2
+fi
+exec "$cache/sor" "$@"
