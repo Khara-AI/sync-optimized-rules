@@ -214,18 +214,46 @@ fn unknown(name: &str) -> Error {
 
 /// Names become folder names in every member: keep them portable.
 pub fn check_name(kind: &str, name: &str) -> Result<()> {
-    let ok = (1..=40).contains(&name.len())
-        && name.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
-        && name
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
-    if ok {
-        Ok(())
+    let allowed = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_';
+    let why = if name.is_empty() {
+        "it cannot be empty".to_owned()
+    } else if name.chars().count() > 40 {
+        format!("{} characters, 40 at most", name.chars().count())
+    } else if name.chars().any(|c| c.is_ascii_uppercase()) {
+        "lowercase only".to_owned()
+    } else if name.chars().any(char::is_whitespace) {
+        "no spaces".to_owned()
+    } else if let Some(c) = name.chars().find(|&c| !allowed(c)) {
+        format!("'{c}' is not allowed (a-z, 0-9, '-' and '_' are)")
+    } else if !name.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+        "it must start with a letter or a digit".to_owned()
     } else {
-        Err(Error::invalid(format!(
-            "invalid {kind} name '{name}': use a-z, 0-9, '-' or '_' (40 characters max)"
-        )))
+        return Ok(());
+    };
+    let fix = suggest(name);
+    let hint = if fix.is_empty() {
+        String::new()
+    } else {
+        format!(": try '{fix}'")
+    };
+    Err(Error::invalid(format!(
+        "invalid {kind} name '{name}', {why}{hint}"
+    )))
+}
+
+/// The closest valid name: lowercase, other characters turned into '-'.
+fn suggest(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.trim().chars() {
+        let c = c.to_ascii_lowercase();
+        if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' {
+            out.push(c);
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
     }
+    let out: String = out.trim_matches(['-', '_']).chars().take(40).collect();
+    out.trim_end_matches(['-', '_']).to_owned()
 }
 
 #[cfg(test)]
@@ -288,5 +316,9 @@ mod tests {
         for bad in ["", "Web", "-x", "a b", "a/b", &"x".repeat(41)] {
             assert!(check_name("group", bad).is_err(), "{bad:?}");
         }
+        let msg = check_name("group", "Khara-AI").unwrap_err().to_string();
+        assert!(msg.contains("lowercase only: try 'khara-ai'"), "{msg}");
+        let msg = check_name("scope", "pure code!").unwrap_err().to_string();
+        assert!(msg.contains("no spaces: try 'pure-code'"), "{msg}");
     }
 }
