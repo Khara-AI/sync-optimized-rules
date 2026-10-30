@@ -25,7 +25,7 @@ Always pass `--json` when you read state, and read `sor --help` once if a comman
 
 ## New group
 
-1. Ask the name and an optional description. Run `sor group add <name> --description "<text>"`. If sor refuses the name, it says why and suggests a fix: offer that fix.
+1. Ask the name, an optional description, and whether to turn on auto-sync (off by default: a rule edited in one repository then changes all of them). Run `sor group add <name> --description "<text>"`, with `--auto` if yes. If sor refuses the name, it says why and suggests a fix: offer that fix.
 2. Repositories: ask which folder to look in (suggest the parent of the current project). `sor find <folder> --json` lists the git repositories inside, how many `.claude/` files each has, and their groups. Ask which to add, then `sor member add <group> <path>` for each. Offer another folder until the user is done.
 3. Offer to capture rules now (next section), then to sync.
 
@@ -79,6 +79,7 @@ For an existing group, offer what applies:
 - **Borrowed scopes**: take single scopes of another group with `sor group import <group> <from> <scope>...`.
 - **Exceptions**: a repository skips a scope with `sor group exclude <group> <repo> <scope>...`, or takes it back with `include`.
 - **Agents**: off by default; `sor group agents <group> on|off` also shares the agents of its scopes.
+- **Auto-sync**: off by default; `sor group auto <group> on|off`. Edited rules and agents then reach every member by themselves, through the plugin's hooks; conflicts and support files stay manual. Say so when offering it: a rule edited in one repository changes all of them.
 - **Check and sync**.
 - **Forget this group**: `sor group remove <group>`, then `sor sync` on its repositories. Its scopes stay in the store.
 

@@ -98,10 +98,10 @@ fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
             if e.file_name() != "__pycache__" {
                 walk(base, &path, out);
             }
-        } else if kind.is_file() {
-            if let Ok(rel) = path.strip_prefix(base) {
-                out.push(slash(rel));
-            }
+        } else if kind.is_file()
+            && let Ok(rel) = path.strip_prefix(base)
+        {
+            out.push(slash(rel));
         }
     }
 }

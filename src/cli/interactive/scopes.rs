@@ -17,10 +17,10 @@ impl Session<'_> {
             .map(|s| {
                 let n = store.files(group, s).len();
                 let mut hint = plural(n, "file", "files");
-                if let Ok(m) = store.meta(group, s) {
-                    if !m.description.is_empty() {
-                        hint = format!("{} · {hint}", m.description);
-                    }
+                if let Ok(m) = store.meta(group, s)
+                    && !m.description.is_empty()
+                {
+                    hint = format!("{} · {hint}", m.description);
                 }
                 Item::new(s, hint)
             })

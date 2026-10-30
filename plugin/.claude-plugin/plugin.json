@@ -1,6 +1,6 @@
 {
   "name": "sor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Keep the Claude Code rules of many repositories in sync, by groups and scopes, locally and without overwriting anything.",
   "author": { "name": "Khara-AI" },
   "repository": "https://github.com/Khara-AI/sync-optimized-rules",

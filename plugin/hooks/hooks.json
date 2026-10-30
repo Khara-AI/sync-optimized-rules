@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SOR_NO_DOWNLOAD=1 \"${CLAUDE_PLUGIN_ROOT}/bin/sor\" auto --hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SOR_NO_DOWNLOAD=1 \"${CLAUDE_PLUGIN_ROOT}/bin/sor\" auto --hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

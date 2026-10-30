@@ -14,6 +14,10 @@ unset IFS
 
 cache="${CLAUDE_PLUGIN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/sync-optimized-rules}/bin"
 if [ ! -x "$cache/sor" ]; then
+  # The plugin's hooks run in every session: they never download anything.
+  if [ -n "${SOR_NO_DOWNLOAD:-}" ]; then
+    exit 0
+  fi
   echo "sor: downloading the latest release..." >&2
   url="https://github.com/Khara-AI/sync-optimized-rules/releases/latest/download/install.sh"
   # Fetched first: piped straight into sh, a failed download would pass for success.

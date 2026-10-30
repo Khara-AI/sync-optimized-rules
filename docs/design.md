@@ -54,6 +54,14 @@ For each target file, comparing its current content with the group's version and
 
 Conflicts are resolved per file: **keep** the local file, **take** the group's (the local one goes to `backup/`), or **promote** the local file to the group (the previous version goes to the store history; every member gets it at its next sync).
 
+## Auto-sync
+
+A group can set `auto: true`. `sor auto` then does, for the repositories of those groups: promote every rule and agent edited locally while the group's version is still what sor last wrote there, then sync. If both sides moved, the file stays `modified`; of two members that edited the same file, the first in path order wins and the other keeps a conflict. Files in `files/` run as hooks in the other members, so they are never promoted automatically. A scope is only promoted from a repository that is a member of the group owning it, with auto-sync on; a repository that only imports it receives its changes but does not write to it. A repository is synced whole, so a member of an auto group also receives the changes of its other groups.
+
+Everything that writes to the store or a repository takes a system lock on `sync.lock` in the configuration home, so the system releases it even if the process is killed. `auto` skips when it is taken, as the next trigger picks up what it missed; the others wait up to 15 seconds.
+
+There is no daemon: the plugin's hooks run `sor auto --hook` at session start and after `Write` or `Edit` under `.claude/`. As a hook it stays silent unless there is something to report (conflicts only at session start), always exits 0 so it never blocks Claude Code, even on a broken configuration, and the launcher does not download sor for it.
+
 Settings fragments are flattened into entries: list items are added to the list if absent, scalars are only set when the key is absent (otherwise a clash is reported). sor records the entries it added and removes only those when a scope leaves; entries the user wrote are never touched.
 
 `sor status` runs the same comparison without applying anything and exits with 2 when anything differs; `sor sync` exits with 2 when conflicts or clashes remain.
@@ -67,7 +75,7 @@ After a capture, the repository it came from has its original files next to the 
 All of them are clients of the same library:
 
 - `sor` CLI: commands for scripts, `--json` for machines, and an interactive mode (bare `sor`, `sor setup`) with keyboard menus.
-- Claude Code plugin: `bin/sor` (the `sor` on the user's `PATH`, else a release downloaded on first use) and a `/sor:sor` skill that asks the menus' questions with Claude's question tool and drives the CLI. Long lists are written out with their paths and answered in free text. `sor find`, `sor scan`, `sor scope capture` with several `--from`, `sor scope merge --file` and `sor diff` give it everything the menus see. The terminal install stays the main way; the plugin is for those who start from Claude, and both share one configuration. `sor update` (and the plugin's `/sor:update`) installs the latest release where `sor` runs from, through the release's own install script, then updates every installed copy of the plugin with `claude plugin update`. `sor install-cli` (the plugin's `/sor:cli`) installs the plugin's version in the user's own terminal, through the same script; the launcher marks its downloaded copy with `SOR_PLUGIN_COPY` so a `sor` already on the `PATH` is left alone. The install scripts take `--plugin` (`SOR_PLUGIN` on Windows) to install the plugin as well, with `claude plugin install --marketplace`. Claude Code only updates a plugin whose version changed, so `plugin.json` follows the version of the crate (a test checks it). A `SessionStart` hook that warns when the current repository drifted from its groups is still to come.
+- Claude Code plugin: `bin/sor` (the `sor` on the user's `PATH`, else a release downloaded on first use) and a `/sor:sor` skill that asks the menus' questions with Claude's question tool and drives the CLI. Long lists are written out with their paths and answered in free text. `sor find`, `sor scan`, `sor scope capture` with several `--from`, `sor scope merge --file` and `sor diff` give it everything the menus see. The terminal install stays the main way; the plugin is for those who start from Claude, and both share one configuration. `sor update` (and the plugin's `/sor:update`) installs the latest release where `sor` runs from, through the release's own install script, then updates every installed copy of the plugin with `claude plugin update`. `sor install-cli` (the plugin's `/sor:cli`) installs the plugin's version in the user's own terminal, through the same script; the launcher marks its downloaded copy with `SOR_PLUGIN_COPY` so a `sor` already on the `PATH` is left alone. The install scripts take `--plugin` (`SOR_PLUGIN` on Windows) to install the plugin as well, with `claude plugin install --marketplace`. Claude Code only updates a plugin whose version changed, so `plugin.json` follows the version of the crate (a test checks it).
 - Editor extension (later, TypeScript): a view of groups and conflicts over `sor --json`.
 
 ## Code layout
@@ -90,11 +98,10 @@ src/capture/hooks.rs hook entries that run captured files
 src/capture/tidy.rs  moving originals aside
 src/engine.rs        status and sync
 src/engine/resolve.rs  keep, take, promote
+src/engine/auto.rs   auto-sync and the sync lock
 src/repo.rs          per-repository state and exclude block
 src/settings.rs      settings fragment merge
 src/fsutil.rs        hashing, atomic writes, moving aside
 src/discover.rs      repository discovery
 src/paths.rs         config home
 ```
-
-To come: the plugin's `SessionStart` hook.

@@ -109,8 +109,11 @@ impl Session<'_> {
                     None | Some(Apply::No) => return Ok(()),
                 }
             }
-            for repo in &apply {
-                engine::run(self.config, repo, true)?;
+            {
+                let _lock = engine::Lock::wait(self.config.root())?;
+                for repo in &apply {
+                    engine::run(self.config, repo, true)?;
+                }
             }
             self.dirty = false;
             self.leaving.clear();
@@ -219,7 +222,10 @@ impl Session<'_> {
                 }
                 Settle::Later => return Ok(true),
             };
-            let done = engine::resolve(self.config, repo, file, how)?;
+            let done = {
+                let _lock = engine::Lock::wait(self.config.root())?;
+                engine::resolve(self.config, repo, file, how)?
+            };
             if how == Resolution::Promote {
                 self.dirty = true;
             }

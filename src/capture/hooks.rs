@@ -28,10 +28,10 @@ pub(super) fn hook_entries(project: &Value, files: &[(&str, &str)]) -> Vec<(Stri
                     );
                 }
             }
-            if rewritten != text {
-                if let Ok(v) = serde_json::from_str(&rewritten) {
-                    out.push((event.clone(), entry.clone(), v));
-                }
+            if rewritten != text
+                && let Ok(v) = serde_json::from_str(&rewritten)
+            {
+                out.push((event.clone(), entry.clone(), v));
             }
         }
     }

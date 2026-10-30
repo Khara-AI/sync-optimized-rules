@@ -1,8 +1,8 @@
 [package]
 name = "sync-optimized-rules"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 description = "Keep the Claude Code rules of many repositories in sync, by groups and scopes, locally and without overwriting anything."
 license = "Apache-2.0"
 repository = "https://github.com/Khara-AI/sync-optimized-rules"

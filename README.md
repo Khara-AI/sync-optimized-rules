@@ -107,6 +107,7 @@ Run `sor` in a terminal. Arrows move, space ticks, enter confirms, esc goes back
 <summary><b>Day to day</b></summary>
 
 - **Edit a shared rule**: edit it in any repository, then *Check and sync*: `sor` sees the change and offers to *promote* it to the group. Or edit it in the store, `~/.config/sync-optimized-rules/groups/<group>/<scope>/`.
+- **Auto-sync**: off by default; turn it on when you create a group or later in its menu (*Auto-sync*), or with `sor group auto <group> on`. With the plugin, a rule or agent you edit then reaches every member by itself: at each Claude Code session start, and right after Claude edits a file under `.claude/`. A session that starts picks up the change for the other members, but only sees it in its own rules from the next session on. Without the plugin, run `sor auto` yourself or from cron. The previous version goes to the store history. If the group's version changed too, the file stays a conflict; support files such as hook scripts run in the other members, so they are never promoted without asking.
 - **Conflicts**: a file you edited, or one that was there before `sor`, is never overwritten. *Check and sync* shows the difference and lets you keep yours, take the group's (yours goes to backup) or promote yours.
 - **Exceptions**: a repository can skip a scope of its group.
 - **Borrowed scopes**: a group can use one scope of another group without sharing everything.
@@ -172,6 +173,8 @@ sor group exclude web ~/code/api anonymity     # this repository skips a scope
 sor group include web ~/code/api anonymity
 sor group import web shared-group licensing    # borrow one scope of another group
 sor group agents web on
+sor group auto web on
+sor auto
 sor group unshare web conventions              # stop installing a scope
 sor member remove web ~/code/api
 sor group remove web                           # then sor sync to take its files away

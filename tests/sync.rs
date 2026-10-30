@@ -1,8 +1,9 @@
 //! End-to-end: one test per invariant of status, sync, resolve and tidy, on
 //! synthetic git repositories.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::{env, fs, process};
 
 use serde_json::{Value, json};
@@ -306,4 +307,166 @@ fn leaving_every_scope_leaves_no_trace_but_trash() {
         !sb.exists("a/.claude/settings.local.json"),
         "no empty settings file left behind"
     );
+}
+
+const OTHER: &str = "b/.claude/rules/g/rules/git.md";
+const STORED: &str = "home/groups/g/rules/rules/git.md";
+
+/// Group `g` with members `a` and `b` installed and auto-sync on.
+fn auto_group(label: &str) -> Sandbox {
+    let sb = Sandbox::new(label);
+    sb.group("src", &["a", "b"]);
+    sb.ok(&["sync"]);
+    sb.ok(&["group", "auto", "g", "on"]);
+    sb
+}
+
+fn hook(sb: &Sandbox, event: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sor"))
+        .args(["auto", "--hook"])
+        .env("SOR_HOME", sb.0.join("home"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(event.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn auto_sync_reaches_the_other_members_and_keeps_the_old_version() {
+    let sb = auto_group("auto-edit");
+    sb.write(RULE, "edited\n");
+    sb.ok(&["auto"]);
+
+    assert_eq!(sb.read(STORED), "edited\n");
+    assert_eq!(sb.read(OTHER), "edited\n");
+    assert_eq!(sb.status("a")["clean"], true);
+    assert_eq!(sb.status("b")["clean"], true);
+    assert!(sb.exists("home/history/g/rules"));
+}
+
+#[test]
+fn auto_sync_is_off_by_default() {
+    let sb = auto_group("auto-off");
+    sb.ok(&["group", "auto", "g", "off"]);
+    sb.write(RULE, "edited\n");
+    assert_eq!(sb.ok(&["auto"]), "nothing to do\n");
+    assert_eq!(sb.read(OTHER), "commit with care\n");
+}
+
+#[test]
+fn auto_sync_never_overwrites_when_both_sides_changed() {
+    let sb = auto_group("auto-both");
+    sb.write(RULE, "mine\n");
+    sb.write(STORED, "theirs\n");
+    assert_eq!(sb.code(&["auto"]), 2);
+
+    assert_eq!(sb.read(RULE), "mine\n");
+    assert_eq!(sb.read(STORED), "theirs\n");
+    assert_eq!(sb.read(OTHER), "theirs\n");
+}
+
+#[test]
+fn auto_sync_first_edit_wins_and_the_second_stays_a_conflict() {
+    let sb = auto_group("auto-two");
+    sb.write(RULE, "from a\n");
+    sb.write(OTHER, "from b\n");
+    assert_eq!(sb.code(&["auto"]), 2);
+
+    assert_eq!(sb.read(STORED), "from a\n");
+    assert_eq!(sb.read(RULE), "from a\n");
+    assert_eq!(sb.read(OTHER), "from b\n");
+}
+
+#[test]
+fn auto_sync_does_not_promote_support_files() {
+    let sb = auto_group("auto-files");
+    let script = "a/.claude/sor/g/rules/hooks/guard.py";
+    sb.write(script, "edited()\n");
+    assert_eq!(sb.code(&["auto"]), 2);
+
+    assert_eq!(sb.read(script), "edited()\n");
+    assert_eq!(sb.read("b/.claude/sor/g/rules/hooks/guard.py"), "print()\n");
+}
+
+#[test]
+fn auto_sync_as_a_hook_ignores_other_files_and_never_blocks() {
+    let sb = auto_group("auto-hook");
+    sb.write(RULE, "edited\n");
+
+    let elsewhere = r#"{"tool_input":{"file_path":"/x/src/main.rs"}}"#;
+    assert_eq!(hook(&sb, elsewhere).status.code(), Some(0));
+    assert_eq!(sb.read(OTHER), "commit with care\n");
+
+    let rule = r#"{"tool_input":{"file_path":"/x/.claude/rules/git.md"}}"#;
+    let out = hook(&sb, rule);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(sb.read(OTHER), "edited\n");
+    assert!(String::from_utf8_lossy(&out.stdout).contains("1 promoted"));
+
+    // A session start carries no file; a conflict is reported, exit code stays 0.
+    sb.write(RULE, "mine\n");
+    sb.write(STORED, "theirs\n");
+    let out = hook(&sb, r#"{"hook_event_name":"SessionStart"}"#);
+    assert_eq!(out.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("1 conflicts"));
+}
+
+#[test]
+fn auto_sync_skips_while_another_sor_is_syncing() {
+    let sb = auto_group("auto-lock");
+    sb.write(RULE, "edited\n");
+    let lock = fs::File::create(sb.0.join("home/sync.lock")).unwrap();
+    lock.try_lock().unwrap();
+    assert!(sb.ok(&["auto"]).contains("another sor"));
+    assert_eq!(sb.read(OTHER), "commit with care\n");
+
+    // Released with its holder, even one that was killed: nothing to clean up.
+    drop(lock);
+    sb.ok(&["auto"]);
+    assert_eq!(sb.read(OTHER), "edited\n");
+}
+
+#[test]
+fn auto_sync_does_not_write_to_a_scope_the_repository_only_borrows() {
+    let sb = auto_group("auto-borrow");
+    sb.repo("c");
+    sb.ok(&["group", "add", "borrower"]);
+    sb.ok(&["member", "add", "borrower", &sb.path("c")]);
+    sb.ok(&["group", "import", "borrower", "g", "rules"]);
+    sb.ok(&["group", "add", "other", "--auto"]);
+    sb.ok(&["member", "add", "other", &sb.path("c")]);
+    sb.ok(&["sync"]);
+
+    sb.write("c/.claude/rules/g/rules/git.md", "from c\n");
+    assert_eq!(sb.code(&["auto"]), 2);
+    assert_eq!(sb.read(STORED), "commit with care\n");
+    assert_eq!(sb.read(OTHER), "commit with care\n");
+    assert_eq!(sb.read("c/.claude/rules/g/rules/git.md"), "from c\n");
+}
+
+#[test]
+fn auto_sync_can_be_chosen_when_the_group_is_created() {
+    let sb = Sandbox::new("auto-create");
+    sb.ok(&["group", "add", "on", "--auto"]);
+    sb.ok(&["group", "add", "off"]);
+    let list: Value = serde_json::from_str(&sb.ok(&["group", "list", "--json"])).unwrap();
+    assert_eq!(list[0]["name"], "off");
+    assert_eq!(list[0]["auto"], false);
+    assert_eq!(list[1]["auto"], true);
+}
+
+#[test]
+fn a_hook_never_fails_even_on_a_broken_configuration() {
+    let sb = auto_group("auto-broken");
+    sb.write("home/config.json", "not json");
+    let out = hook(&sb, r#"{"hook_event_name":"SessionStart"}"#);
+    assert_eq!(out.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("sor auto-sync:"));
 }

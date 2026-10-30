@@ -15,8 +15,10 @@ use crate::repo::{self, State};
 use crate::settings::{self, Item};
 use crate::store::{Area, Store};
 
+mod auto;
 mod resolve;
 
+pub use auto::{AutoFile, AutoReport, Lock, auto};
 pub use resolve::{Resolution, group_copy, resolve};
 
 pub const TRASH: &str = ".claude/sor/trash";

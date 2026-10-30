@@ -41,6 +41,7 @@ enum GroupAction {
     Borrow,
     OptOut,
     Agents,
+    Auto,
     Describe,
     Sync,
     Forget,
@@ -139,6 +140,9 @@ impl Session<'_> {
         if g.agents {
             parts.push("agents on".into());
         }
+        if g.auto {
+            parts.push("auto-sync on".into());
+        }
         parts.join(" · ")
     }
 
@@ -157,7 +161,12 @@ impl Session<'_> {
         let Some(description) = self.ui.text("Description (optional)", "", |_| Ok(()))? else {
             return Ok(());
         };
+        let question = "Auto-sync? Rules edited in one repository reach all of them on their own";
+        let Some(auto) = self.ui.confirm(question, false)? else {
+            return Ok(());
+        };
         self.config.add_group(&name, &description)?;
+        self.config.set_auto(&name, auto)?;
         self.config.save()?;
         self.ok(&format!("group {name} created"));
 
@@ -238,6 +247,14 @@ impl Session<'_> {
                 ),
                 GroupAction::Agents,
             ));
+            let auto = if g.auto { "on" } else { "off" };
+            e.push((
+                Item::new(
+                    format!("Auto-sync: {auto}"),
+                    "edited rules reach every member on their own; conflicts stay yours",
+                ),
+                GroupAction::Auto,
+            ));
             let description = if g.description.is_empty() {
                 "none".to_owned()
             } else {
@@ -264,6 +281,7 @@ impl Session<'_> {
                 GroupAction::Borrow => self.borrow(name),
                 GroupAction::OptOut => self.opt_out(name),
                 GroupAction::Agents => self.toggle_agents(name),
+                GroupAction::Auto => self.toggle_auto(name),
                 GroupAction::Describe => self.describe(name),
                 GroupAction::Sync => self.sync(),
                 GroupAction::Forget => self.forget(name),
@@ -278,6 +296,14 @@ impl Session<'_> {
         self.config.save()?;
         self.dirty = true;
         self.ok(&format!("agents {}", if on { "on" } else { "off" }));
+        Ok(())
+    }
+
+    fn toggle_auto(&mut self, group: &str) -> Result<()> {
+        let on = !self.config.group(group)?.auto;
+        self.config.set_auto(group, on)?;
+        self.config.save()?;
+        self.ok(&format!("auto-sync {}", if on { "on" } else { "off" }));
         Ok(())
     }
 

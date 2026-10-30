@@ -27,6 +27,7 @@ pub(super) fn run(config: &mut Config, w: &[&str], f: &Flags) -> Result<bool> {
         ["scope", "list"] => render::scopes(config, None, f.json),
         ["scope", "list", group] => render::scopes(config, Some(group), f.json),
         ["scope", "capture", group, scope, paths @ ..] if !paths.is_empty() => {
+            let _lock = engine::Lock::wait(config.root())?;
             let from = if f.from.is_empty() {
                 vec![PathBuf::from(".")]
             } else {
@@ -44,6 +45,7 @@ pub(super) fn run(config: &mut Config, w: &[&str], f: &Flags) -> Result<bool> {
             Ok(())
         }
         ["scope", "merge", group, scope, path, versions @ ..] if !versions.is_empty() => {
+            let _lock = engine::Lock::wait(config.root())?;
             let names: Vec<String> = versions.iter().map(|v| (*v).to_owned()).collect();
             match &f.file {
                 Some(file) => {

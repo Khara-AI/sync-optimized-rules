@@ -72,6 +72,7 @@ impl Session<'_> {
 
         let mut versions: Vec<Versions> = Vec::new();
         for (n, b) in batches.iter().enumerate() {
+            let _lock = engine::Lock::wait(self.config.root())?;
             let files = capture::scope_names(&found, &b.files);
             let from: &[PathBuf] = if perms_to == Some(n) { &repos } else { &[] };
             let report = capture::capture_found(
@@ -191,6 +192,7 @@ impl Session<'_> {
         for v in versions {
             self.ui
                 .say(Tone::Dim, &format!("  Claude is merging {}…", v.path));
+            let _lock = engine::Lock::wait(self.config.root())?;
             match capture::merge(self.config, group, &v.scope, &v.path, &v.names) {
                 Ok(()) => self.ok(&format!("{}/{} merged", v.scope, v.path)),
                 Err(e) => self.warn(&format!("{}: {e}; the versions stay side by side", v.path)),
@@ -222,6 +224,7 @@ impl Session<'_> {
             return Ok(());
         }
         for repo in sources {
+            let _lock = engine::Lock::wait(self.config.root())?;
             let installed = engine::run(self.config, repo, true)?;
             if installed.pending() {
                 self.warn(&format!(

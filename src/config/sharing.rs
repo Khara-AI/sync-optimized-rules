@@ -50,6 +50,11 @@ impl Config {
         Ok(())
     }
 
+    pub fn set_auto(&mut self, group: &str, on: bool) -> Result<()> {
+        self.group_mut(group)?.auto = on;
+        Ok(())
+    }
+
     pub fn exclude(&mut self, group: &str, repo: &Path, scopes: &[String]) -> Result<PathBuf> {
         let repo = fs::canonicalize(repo).at(repo)?;
         if !self.repos(group)?.contains(&repo) {

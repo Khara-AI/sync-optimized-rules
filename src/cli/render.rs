@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sync_optimized_rules::capture::{Capture, Tidy};
 use sync_optimized_rules::config::Config;
-use sync_optimized_rules::engine::{FileState, Report};
+use sync_optimized_rules::engine::{AutoFile, AutoReport, FileState, Report};
 use sync_optimized_rules::error::Result;
 
 fn print_json(value: &impl Serialize) {
@@ -41,6 +41,7 @@ pub fn groups(config: &Config, json: bool) {
                     "members": g.members,
                     "scopes": g.scopes,
                     "agents": g.agents,
+                    "auto": g.auto,
                     "exclude": g.exclude,
                     "imports": g.imports,
                 })
@@ -55,8 +56,9 @@ pub fn groups(config: &Config, json: bool) {
     }
     for (name, g) in &config.groups {
         let agents = if g.agents { ", agents on" } else { "" };
+        let auto = if g.auto { ", auto-sync on" } else { "" };
         println!(
-            "{name}  ({} members{agents})  {}",
+            "{name}  ({} members{agents}{auto})  {}",
             g.members.len(),
             g.description
         );
@@ -68,6 +70,48 @@ pub fn groups(config: &Config, json: bool) {
         }
         for (repo, list) in &g.exclude {
             println!("  excludes {} in {}", list.join(", "), repo.display());
+        }
+    }
+}
+
+/// `None` means another sor was syncing. As a hook, the output lands in
+/// Claude's context: silent unless the user has something to know.
+pub fn auto(report: Option<&AutoReport>, json: bool, hook: bool) {
+    let Some(r) = report else {
+        if json {
+            println!("{}", json!({ "skipped": true }));
+        } else if !hook {
+            println!("another sor is syncing: nothing done");
+        }
+        return;
+    };
+    if json {
+        print_json(r);
+    } else if hook {
+        if !r.promoted.is_empty() || !r.pending.is_empty() || !r.failed.is_empty() {
+            println!(
+                "sor auto-sync: {} promoted, {} conflicts to settle, {} repositories failed (run sor status)",
+                r.promoted.len(),
+                r.pending.len(),
+                r.failed.len()
+            );
+        }
+    } else {
+        let list = |label: &str, files: &[AutoFile]| {
+            for f in files {
+                println!("{label} {}: {}", f.repo.display(), f.file);
+            }
+        };
+        list("promoted", &r.promoted);
+        list("updated ", &r.updated);
+        list("conflict", &r.pending);
+        list("failed  ", &r.failed);
+        if r.promoted.is_empty()
+            && r.updated.is_empty()
+            && r.pending.is_empty()
+            && r.failed.is_empty()
+        {
+            println!("nothing to do");
         }
     }
 }

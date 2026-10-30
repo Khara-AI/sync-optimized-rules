@@ -41,6 +41,9 @@ pub struct Group {
     /// Whether the `agents/` of its scopes are installed. Off by default:
     /// agents are optimisation, not safety rules.
     pub agents: bool,
+    /// Whether `sor auto` promotes plain local edits and syncs the members.
+    /// Off by default: without it, nothing changes until the user syncs.
+    pub auto: bool,
     /// Scopes a given repository opts out of.
     pub exclude: BTreeMap<PathBuf, Vec<String>>,
     /// Scopes received from other groups, by source group.
@@ -200,6 +203,17 @@ impl Config {
     pub fn all_repos(&self) -> Result<Vec<PathBuf>> {
         let mut out = Vec::new();
         for name in self.groups.keys() {
+            out.extend(self.repos(name)?);
+        }
+        out.sort();
+        out.dedup();
+        Ok(out)
+    }
+
+    /// Every repository of the groups that have auto-sync on.
+    pub fn auto_repos(&self) -> Result<Vec<PathBuf>> {
+        let mut out = Vec::new();
+        for (name, _) in self.groups.iter().filter(|(_, g)| g.auto) {
             out.extend(self.repos(name)?);
         }
         out.sort();

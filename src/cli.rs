@@ -11,6 +11,7 @@ mod update;
 
 use std::ffi::OsString;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use lexopt::prelude::*;
@@ -31,10 +32,11 @@ sor - keep Claude Code rules in sync across repositories
 
 Groups:
   sor group list
-  sor group add <name> [--description <text>]
+  sor group add <name> [--description <text>] [--auto]
   sor group remove <name>                     forget a group (its files stay on disk)
   sor group share|unshare <group> <scope>...  install a scope in every member, or stop
   sor group agents <group> on|off             also install the scopes' agents
+  sor group auto <group> on|off               auto-sync: see sor auto
   sor group exclude|include <group> <repo> <scope>...
   sor group import <group> <from-group> <scope>...
   sor member add <group> <path> [--workspace] [--depth <n>]
@@ -58,6 +60,9 @@ Repositories (all repositories of all groups when <repo> is omitted):
   sor sync [repo] [--dry-run]
   sor diff <repo> <file>                      the group's version of a conflict against yours
   sor resolve <repo> <file> keep|take|promote
+  sor auto [--hook]                           for groups with auto-sync on: promote rules and
+                                              agents edited locally, then sync the members;
+                                              conflicts stay yours. The plugin runs it for you
   sor tidy <repo> <path>... [--dry-run]       move originals to .claude/sor/backup/
 
 Maintenance:
@@ -84,6 +89,8 @@ struct Flags {
     dry_run: bool,
     permissions: bool,
     move_originals: bool,
+    hook: bool,
+    auto: bool,
 }
 
 pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
@@ -97,6 +104,8 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
             Long("dry-run") => f.dry_run = true,
             Long("permissions") => f.permissions = true,
             Long("move") => f.move_originals = true,
+            Long("hook") => f.hook = true,
+            Long("auto") => f.auto = true,
             Long("depth") => f.depth = Some(parser.value().map_err(usage)?.parse().map_err(usage)?),
             Long("description") => {
                 f.description = Some(parser.value().map_err(usage)?.string().map_err(usage)?)
@@ -116,7 +125,11 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
         }
     }
 
-    let mut config = Config::load(&paths::config_home()?)?;
+    let mut config = match paths::config_home().and_then(|home| Config::load(&home)) {
+        Ok(config) => config,
+        Err(e) if f.hook => return Ok(hook_failed(&e)),
+        Err(e) => return Err(e),
+    };
     let w: Vec<&str> = words.iter().map(String::as_str).collect();
     let owned = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
     let json = f.json;
@@ -133,6 +146,7 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
         ["group", "list"] => render::groups(&config, json),
         ["group", "add", name] => {
             config.add_group(name, f.description.as_deref().unwrap_or(""))?;
+            config.set_auto(name, f.auto)?;
             config.save()?;
             render::done(
                 json,
@@ -171,6 +185,38 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
                 json!({ "group": group, "agents": *state == "on" }),
                 &format!("agents {state} for '{group}' (run sor sync)"),
             );
+        }
+        ["group", "auto", group, state @ ("on" | "off")] => {
+            config.set_auto(group, *state == "on")?;
+            config.save()?;
+            render::done(
+                json,
+                json!({ "group": group, "auto": *state == "on" }),
+                &format!("auto-sync {state} for '{group}'"),
+            );
+        }
+        ["auto"] => {
+            let edit = if f.hook {
+                match hook_edit() {
+                    Some(edit) => edit,
+                    None => return Ok(0),
+                }
+            } else {
+                false
+            };
+            let mut report = match engine::auto(&config) {
+                Ok(report) => report,
+                Err(e) if f.hook => return Ok(hook_failed(&e)),
+                Err(e) => return Err(e),
+            };
+            // Conflicts are worth one line at session start, not one per edit.
+            if let Some(r) = report.as_mut().filter(|_| edit) {
+                r.pending.clear();
+            }
+            render::auto(report.as_ref(), json, f.hook);
+            // A hook that exits with 2 would block Claude Code.
+            let pending = report.is_some_and(|r| !r.pending.is_empty());
+            return Ok(if pending && !f.hook { DRIFT } else { 0 });
         }
         [
             "group",
@@ -235,6 +281,9 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
         ["repos", group] => render::paths(&config.repos(group)?, json),
         ["status"] | ["status", _] | ["sync"] | ["sync", _] => {
             let apply = w[0] == "sync" && !f.dry_run;
+            let _lock = apply
+                .then(|| engine::Lock::wait(config.root()))
+                .transpose()?;
             let repos = match w.get(1) {
                 Some(repo) => vec![canonical(repo)?],
                 None => config.all_repos()?,
@@ -252,10 +301,12 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
             return Ok(if drift { DRIFT } else { 0 });
         }
         ["resolve", repo, file, how] => {
+            let _lock = engine::Lock::wait(config.root())?;
             let msg = engine::resolve(&config, &canonical(repo)?, file, Resolution::parse(how)?)?;
             render::done(json, json!({ "resolved": file, "how": how }), &msg);
         }
         ["tidy", repo, paths @ ..] if !paths.is_empty() => {
+            let _lock = engine::Lock::wait(config.root())?;
             let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
             let report = capture::tidy(&config, &canonical(repo)?, &paths, !f.dry_run)?;
             render::tidy(&report, json);
@@ -268,6 +319,25 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<u8> {
         }
     }
     Ok(0)
+}
+
+/// The event Claude Code sends a hook on stdin: `Some(true)` for an edit under
+/// `.claude/`, `Some(false)` when no file is involved (session start), `None`
+/// for an edit elsewhere, which cannot have changed a rule and should cost nothing.
+fn hook_edit() -> Option<bool> {
+    let mut input = String::new();
+    let _ = std::io::stdin().read_to_string(&mut input);
+    let event: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
+    match event["tool_input"]["file_path"].as_str() {
+        None => Some(false),
+        Some(path) => path.contains(".claude").then_some(true),
+    }
+}
+
+/// A hook never gets in Claude Code's way: it says what failed and exits 0.
+fn hook_failed(e: &Error) -> u8 {
+    println!("sor auto-sync: {e}");
+    0
 }
 
 fn canonical(path: &str) -> Result<PathBuf> {
